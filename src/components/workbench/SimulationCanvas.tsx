@@ -7,6 +7,7 @@ import { CanvasStatusBar } from './CanvasStatusBar';
 import { FacialMesh } from './FacialMesh';
 import { useCanvasState, Point, CanvasObject } from '@/hooks/useCanvasState';
 import { FacialMeshData } from '@/types/facialLandmarks';
+import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { cn } from '@/lib/utils';
 
 interface SimulationCanvasProps {
@@ -17,7 +18,10 @@ interface SimulationCanvasProps {
   meshData?: FacialMeshData | null;
   showMesh?: boolean;
   meshOpacity?: number;
+  meshEditMode?: MeshEditMode;
   onMeshPointMove?: (pointId: string, x: number, y: number) => void;
+  onMeshPointAdd?: (x: number, y: number) => void;
+  onMeshPointRemove?: (pointId: string) => void;
 }
 
 export interface SimulationCanvasRef {
@@ -50,7 +54,7 @@ const TOOL_CURSORS: Record<ToolType, string> = {
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, showMesh = true, meshOpacity = 80, onMeshPointMove }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, showMesh = true, meshOpacity = 80, meshEditMode = 'move', onMeshPointMove, onMeshPointAdd, onMeshPointRemove }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -429,7 +433,10 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           imageHeight={imageBounds.height}
           imageLeft={imageBounds.left}
           imageTop={imageBounds.top}
+          editMode={meshEditMode}
           onPointMove={onMeshPointMove}
+          onPointAdd={onMeshPointAdd}
+          onPointRemove={onMeshPointRemove}
         />
 
         <CanvasToolbar

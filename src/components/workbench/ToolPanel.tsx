@@ -48,6 +48,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 import { type MeshDensity } from '@/types/facialLandmarks';
+import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 
 export type ToolType = 'select' | 'warp' | 'volume' | 'incision' | 'suture' | 'annotate' | 'eraser';
 
@@ -68,6 +69,8 @@ interface ToolPanelProps {
   onMeshOpacityChange: (opacity: number) => void;
   meshDensity: MeshDensity;
   onMeshDensityChange: (density: MeshDensity) => void;
+  meshEditMode: MeshEditMode;
+  onMeshEditModeChange: (mode: MeshEditMode) => void;
   isAnalyzingFace: boolean;
 }
 
@@ -132,6 +135,8 @@ export function ToolPanel({
   onMeshOpacityChange,
   meshDensity,
   onMeshDensityChange,
+  meshEditMode,
+  onMeshEditModeChange,
   isAnalyzingFace,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
@@ -319,8 +324,59 @@ export function ToolPanel({
               </div>
             </div>
 
+            {/* Edit Mode */}
+            <div className="space-y-2">
+              <Label className="text-xs">Modo de Edição</Label>
+              <div className="flex gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={meshEditMode === 'move' ? 'tool-active' : 'outline'}
+                      size="sm"
+                      className="flex-1 h-7 px-2"
+                      onClick={() => onMeshEditModeChange('move')}
+                      disabled={!showMesh}
+                    >
+                      <Move className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Mover pontos</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={meshEditMode === 'add' ? 'tool-active' : 'outline'}
+                      size="sm"
+                      className="flex-1 h-7 px-2"
+                      onClick={() => onMeshEditModeChange('add')}
+                      disabled={!showMesh}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Adicionar ponto</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={meshEditMode === 'remove' ? 'tool-active' : 'outline'}
+                      size="sm"
+                      className="flex-1 h-7 px-2"
+                      onClick={() => onMeshEditModeChange('remove')}
+                      disabled={!showMesh}
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Remover ponto</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+
             <p className="text-[10px] text-muted-foreground">
-              Arraste os pontos para ajustar a análise de simetria
+              {meshEditMode === 'move' && 'Arraste os pontos para ajustar'}
+              {meshEditMode === 'add' && 'Clique na imagem para adicionar ponto'}
+              {meshEditMode === 'remove' && 'Clique em um ponto para removê-lo'}
             </p>
           </div>
         </div>

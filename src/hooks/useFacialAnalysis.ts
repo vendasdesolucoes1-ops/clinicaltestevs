@@ -3,13 +3,19 @@ import { supabase } from '@/integrations/supabase/client';
 import { FacialMeshData, FacialPoint, MeshDensity, getConnectionsByDensity } from '@/types/facialLandmarks';
 import { toast } from 'sonner';
 
+export type MeshEditMode = 'move' | 'add' | 'remove';
+
 interface UseFacialAnalysisReturn {
   isAnalyzing: boolean;
   meshData: FacialMeshData | null;
   meshDensity: MeshDensity;
   setMeshDensity: (density: MeshDensity) => void;
+  meshEditMode: MeshEditMode;
+  setMeshEditMode: (mode: MeshEditMode) => void;
   analyzeImage: (imageUrl: string) => Promise<FacialMeshData | null>;
   updatePoint: (pointId: string, x: number, y: number) => void;
+  addPoint: (x: number, y: number) => void;
+  removePoint: (pointId: string) => void;
   clearMesh: () => void;
 }
 
@@ -17,6 +23,8 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [points, setPoints] = useState<FacialPoint[] | null>(null);
   const [meshDensity, setMeshDensity] = useState<MeshDensity>('dense');
+  const [meshEditMode, setMeshEditMode] = useState<MeshEditMode>('move');
+  const [customPointCounter, setCustomPointCounter] = useState(1);
 
   // Compute meshData based on points and current density
   const meshData = useMemo((): FacialMeshData | null => {
@@ -99,8 +107,33 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     });
   }, []);
 
+  const addPoint = useCallback((x: number, y: number) => {
+    const newPoint: FacialPoint = {
+      id: `custom_point_${customPointCounter}`,
+      name: `Ponto ${customPointCounter}`,
+      x,
+      y,
+      category: 'contour',
+    };
+    
+    setCustomPointCounter(prev => prev + 1);
+    setPoints(prev => prev ? [...prev, newPoint] : [newPoint]);
+    toast.success(`Ponto adicionado`);
+  }, [customPointCounter]);
+
+  const removePoint = useCallback((pointId: string) => {
+    setPoints(prev => {
+      if (!prev) return null;
+      const filtered = prev.filter(p => p.id !== pointId);
+      if (filtered.length === prev.length) return prev;
+      toast.success('Ponto removido');
+      return filtered;
+    });
+  }, []);
+
   const clearMesh = useCallback(() => {
     setPoints(null);
+    setCustomPointCounter(1);
   }, []);
 
   return {
@@ -108,8 +141,12 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     meshData,
     meshDensity,
     setMeshDensity,
+    meshEditMode,
+    setMeshEditMode,
     analyzeImage,
     updatePoint,
+    addPoint,
+    removePoint,
     clearMesh,
   };
 };
