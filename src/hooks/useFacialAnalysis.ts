@@ -36,7 +36,7 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
   // Compute meshData based on points, density and custom connections
   const meshData = useMemo((): FacialMeshData | null => {
     if (!points) return null;
-    const baseConnections = getConnectionsByDensity(meshDensity);
+    const baseConnections = getConnectionsByDensity(meshDensity, points);
     return {
       points,
       connections: [...baseConnections, ...customConnections],
@@ -90,10 +90,10 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
 
       const meshResult: FacialMeshData = {
         points: detectedPoints,
-        connections: getConnectionsByDensity(meshDensity),
+        connections: getConnectionsByDensity(meshDensity, detectedPoints),
       };
 
-      toast.success('Landmarks faciais detectados!');
+      toast.success(`${detectedPoints.length} landmarks faciais detectados!`);
       
       return meshResult;
       
