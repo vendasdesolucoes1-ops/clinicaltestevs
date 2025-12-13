@@ -1,96 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
-
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 210 20% 98%;
+    --foreground: 215 25% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 215 25% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 215 25% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 199 89% 38%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 210 15% 93%;
+    --secondary-foreground: 215 25% 25%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 210 15% 95%;
+    --muted-foreground: 215 15% 45%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 175 60% 40%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --success: 142 71% 35%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 10%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 199 89% 38%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
+    --sidebar-background: 210 18% 96%;
+    --sidebar-foreground: 215 25% 25%;
+    --sidebar-primary: 199 89% 38%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 15% 92%;
+    --sidebar-accent-foreground: 215 25% 20%;
+    --sidebar-border: 214 20% 90%;
+    --sidebar-ring: 199 89% 38%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Custom medical UI tokens */
+    --clinical-blue: 199 89% 38%;
+    --clinical-teal: 175 60% 40%;
+    --clinical-slate: 215 25% 25%;
+    --processing: 38 92% 50%;
+    --canvas-bg: 210 10% 96%;
+    --panel-bg: 0 0% 100%;
+    --tool-active: 199 89% 95%;
+    --version-a: 199 89% 45%;
+    --version-b: 280 60% 55%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 220 20% 10%;
+    --foreground: 210 20% 95%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 220 18% 13%;
+    --card-foreground: 210 20% 95%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 220 18% 13%;
+    --popover-foreground: 210 20% 95%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 195 85% 50%;
+    --primary-foreground: 220 20% 8%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 220 15% 18%;
+    --secondary-foreground: 210 20% 90%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 220 15% 16%;
+    --muted-foreground: 215 15% 60%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 175 55% 45%;
+    --accent-foreground: 220 20% 8%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --success: 142 60% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 85% 55%;
+    --warning-foreground: 0 0% 10%;
+
+    --border: 220 15% 20%;
+    --input: 220 15% 20%;
+    --ring: 195 85% 50%;
+
+    --sidebar-background: 220 18% 11%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 195 85% 50%;
+    --sidebar-primary-foreground: 220 20% 8%;
+    --sidebar-accent: 220 15% 16%;
+    --sidebar-accent-foreground: 210 20% 90%;
+    --sidebar-border: 220 15% 18%;
+    --sidebar-ring: 195 85% 50%;
+
+    --clinical-blue: 195 85% 50%;
+    --clinical-teal: 175 55% 45%;
+    --clinical-slate: 210 20% 90%;
+    --processing: 38 85% 55%;
+    --canvas-bg: 220 18% 8%;
+    --panel-bg: 220 18% 13%;
+    --tool-active: 195 85% 15%;
+    --version-a: 195 85% 50%;
+    --version-b: 280 55% 60%;
   }
 }
 
@@ -100,6 +125,105 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
   }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  .clinical-panel {
+    @apply bg-card border border-border rounded-lg shadow-sm;
+  }
+
+  .clinical-input {
+    @apply bg-background border border-input rounded-md px-3 py-2 text-sm 
+           focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1
+           placeholder:text-muted-foreground;
+  }
+
+  .tool-button {
+    @apply flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium
+           transition-all duration-150 ease-out
+           hover:bg-secondary text-secondary-foreground
+           focus:outline-none focus:ring-2 focus:ring-ring;
+  }
+
+  .tool-button-active {
+    @apply bg-primary/10 text-primary border border-primary/30;
+  }
+
+  .version-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium;
+  }
+
+  .version-a {
+    @apply bg-[hsl(var(--version-a))]/15 text-[hsl(var(--version-a))] border border-[hsl(var(--version-a))]/30;
+  }
+
+  .version-b {
+    @apply bg-[hsl(var(--version-b))]/15 text-[hsl(var(--version-b))] border border-[hsl(var(--version-b))]/30;
+  }
+
+  .status-processing {
+    @apply bg-warning/15 text-warning border border-warning/30;
+  }
+
+  .status-ready {
+    @apply bg-success/15 text-success border border-success/30;
+  }
+
+  .status-failed {
+    @apply bg-destructive/15 text-destructive border border-destructive/30;
+  }
+
+  .canvas-container {
+    @apply bg-[hsl(var(--canvas-bg))] rounded-lg border border-border overflow-hidden;
+  }
+
+  .panel-section {
+    @apply p-4 border-b border-border last:border-b-0;
+  }
+
+  .panel-title {
+    @apply text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 3px;
+  }
+
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+/* Canvas crosshair cursor */
+.cursor-crosshair {
+  cursor: crosshair;
+}
+
+/* Custom focus styles for accessibility */
+.focus-visible-ring:focus-visible {
+  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
 }
