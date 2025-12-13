@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
 import { FacialMeshData, FacialPoint, POINT_LABELS } from '@/types/facialLandmarks';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
@@ -53,6 +53,7 @@ export const FacialMesh = ({
 }: FacialMeshProps) => {
   const meshObjectsRef = useRef<fabric.Object[]>([]);
   const pointsMapRef = useRef<Map<string, fabric.Circle>>(new Map());
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string } | null>(null);
 
   const clearMesh = useCallback(() => {
     if (!canvas) return;
@@ -272,6 +273,38 @@ export const FacialMesh = ({
     };
   }, [canvas, meshData, editMode, connectingFrom, imageWidth, imageHeight, imageLeft, imageTop, onPointMove, onPointAdd, onPointRemove, onStartConnection, onAddConnection]);
 
+  // Handle tooltip on hover
+  useEffect(() => {
+    if (!canvas) return;
+
+    const handleMouseOver = (e: any) => {
+      const target = e.target;
+      if (target && (target as any).pointId && (target as any).pointLabel) {
+        const pointer = canvas.getPointer(e.e);
+        setTooltip({
+          x: pointer.x,
+          y: pointer.y - 20,
+          label: (target as any).pointLabel,
+        });
+      }
+    };
+
+    const handleMouseOut = (e: any) => {
+      const target = e.target;
+      if (target && (target as any).pointId) {
+        setTooltip(null);
+      }
+    };
+
+    canvas.on('mouse:over', handleMouseOver);
+    canvas.on('mouse:out', handleMouseOut);
+
+    return () => {
+      canvas.off('mouse:over', handleMouseOver);
+      canvas.off('mouse:out', handleMouseOut);
+    };
+  }, [canvas]);
+
   // Limpar ao desmontar
   useEffect(() => {
     return () => {
@@ -279,5 +312,21 @@ export const FacialMesh = ({
     };
   }, [clearMesh]);
 
-  return null; // Componente não renderiza DOM, manipula o canvas diretamente
+  // Render tooltip as a portal-like element positioned absolutely
+  if (tooltip) {
+    return (
+      <div
+        className="absolute pointer-events-none z-50 px-2 py-1 text-xs font-medium bg-popover text-popover-foreground border border-border rounded shadow-lg"
+        style={{
+          left: tooltip.x,
+          top: tooltip.y,
+          transform: 'translateX(-50%)',
+        }}
+      >
+        {tooltip.label}
+      </div>
+    );
+  }
+
+  return null;
 };
