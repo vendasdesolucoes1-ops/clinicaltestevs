@@ -35,6 +35,7 @@ export default function Workbench() {
   const [activeTool, setActiveTool] = useState<ToolType>('select');
   const [isPanMode, setIsPanMode] = useState(false);
   const [processingJob, setProcessingJob] = useState<SimulationJob | null>(null);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string>('/placeholder.svg');
   
   const { 
     objects, 
@@ -52,6 +53,10 @@ export default function Workbench() {
         if (data) {
           setCaseData(data);
           setSelectedVersion(data.versions[0] || null);
+          // Set initial image
+          if (data.photos.length > 0) {
+            setCurrentImageUrl(data.photos[0].url);
+          }
           const job = mockJobs.find(j => j.caseId === id && j.status === 'processando');
           setProcessingJob(job || null);
         } else {
@@ -69,6 +74,26 @@ export default function Workbench() {
       loadCase();
     }
   }, [id, navigate]);
+
+  // Handle adding a new photo
+  const handleAddPhoto = useCallback((file: File) => {
+    const url = URL.createObjectURL(file);
+    setCurrentImageUrl(url);
+    
+    // Also add to case data
+    if (caseData) {
+      const newPhoto = {
+        id: `ph_${Date.now()}`,
+        angle: 'frente' as const,
+        url: url,
+        capturedAt: new Date().toISOString(),
+      };
+      setCaseData(prev => prev ? {
+        ...prev,
+        photos: [...prev.photos, newPhoto],
+      } : null);
+    }
+  }, [caseData]);
 
   // Handlers
   const handleUndo = useCallback(() => {
@@ -248,7 +273,6 @@ export default function Workbench() {
     );
   }
 
-  const imageUrl = caseData.photos[0]?.url || '/placeholder.svg';
   const versionsA = caseData.versions.filter(v => v.type === 'A');
   const versionsB = caseData.versions.filter(v => v.type === 'B');
 
@@ -265,6 +289,7 @@ export default function Workbench() {
           onRenameVersion={handleRenameVersion}
           onDeleteVersion={handleDeleteVersion}
           onExport={handleExport}
+          onAddPhoto={handleAddPhoto}
         />
       </div>
 
@@ -320,7 +345,7 @@ export default function Workbench() {
           {viewMode === '2d' && (
             <SimulationCanvas
               ref={canvasRef}
-              imageUrl={imageUrl}
+              imageUrl={currentImageUrl}
               activeTool={activeTool}
               isPanMode={isPanMode}
             />
@@ -333,8 +358,8 @@ export default function Workbench() {
           )}
           {viewMode === 'compare' && (
             <ComparisonView
-              imageA={imageUrl}
-              imageB={imageUrl}
+              imageA={currentImageUrl}
+              imageB={currentImageUrl}
               labelA={versionsA[0]?.name || 'Original'}
               labelB={versionsB[0]?.name || 'Versão B'}
             />
