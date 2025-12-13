@@ -61,6 +61,7 @@ export default function Workbench() {
     addPoint,
     removePoint,
     addConnection,
+    removeConnection,
     startConnection,
     cancelConnection,
     clearMesh,
@@ -386,6 +387,7 @@ export default function Workbench() {
               onMeshPointRemove={removePoint}
               onMeshStartConnection={startConnection}
               onMeshAddConnection={addConnection}
+              onMeshRemoveConnection={removeConnection}
             />
           )}
           
