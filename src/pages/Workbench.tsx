@@ -52,8 +52,12 @@ export default function Workbench() {
     meshData,
     meshDensity,
     setMeshDensity,
+    meshEditMode,
+    setMeshEditMode,
     analyzeImage,
     updatePoint,
+    addPoint,
+    removePoint,
     clearMesh,
   } = useFacialAnalysis();
 
@@ -367,7 +371,10 @@ export default function Workbench() {
               meshData={meshData}
               showMesh={showMesh}
               meshOpacity={meshOpacity}
+              meshEditMode={meshEditMode}
               onMeshPointMove={updatePoint}
+              onMeshPointAdd={addPoint}
+              onMeshPointRemove={removePoint}
             />
           )}
           
@@ -430,6 +437,8 @@ export default function Workbench() {
           onMeshOpacityChange={setMeshOpacity}
           meshDensity={meshDensity}
           onMeshDensityChange={setMeshDensity}
+          meshEditMode={meshEditMode}
+          onMeshEditModeChange={setMeshEditMode}
           isAnalyzingFace={isAnalyzing}
         />
       </div>

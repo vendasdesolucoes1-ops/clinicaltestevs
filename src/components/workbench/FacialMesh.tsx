@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import * as fabric from 'fabric';
 import { FacialMeshData, FacialPoint, POINT_LABELS } from '@/types/facialLandmarks';
+import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 
 interface FacialMeshProps {
   canvas: fabric.Canvas | null;
@@ -11,7 +12,10 @@ interface FacialMeshProps {
   imageHeight: number;
   imageLeft: number;
   imageTop: number;
+  editMode: MeshEditMode;
   onPointMove?: (pointId: string, x: number, y: number) => void;
+  onPointAdd?: (x: number, y: number) => void;
+  onPointRemove?: (pointId: string) => void;
 }
 
 const POINT_RADIUS = 6;
@@ -23,6 +27,8 @@ const VERTICAL_COLOR = 'rgba(255, 100, 100, 0.6)';
 const DIAGONAL_COLOR = 'rgba(100, 255, 100, 0.5)';
 const CONTOUR_COLOR = 'rgba(200, 100, 255, 0.6)';
 
+const CUSTOM_POINT_COLOR = '#ff6b6b';
+
 export const FacialMesh = ({
   canvas,
   meshData,
@@ -32,7 +38,10 @@ export const FacialMesh = ({
   imageHeight,
   imageLeft,
   imageTop,
+  editMode,
   onPointMove,
+  onPointAdd,
+  onPointRemove,
 }: FacialMeshProps) => {
   const meshObjectsRef = useRef<fabric.Object[]>([]);
   const pointsMapRef = useRef<Map<string, fabric.Circle>>(new Map());
@@ -98,18 +107,20 @@ export const FacialMesh = ({
       const coords = pointsMap.get(point.id);
       if (!coords) return;
 
+      const isCustomPoint = point.id.startsWith('custom_');
+      
       const circle = new fabric.Circle({
         radius: POINT_RADIUS,
-        fill: POINT_COLOR,
+        fill: isCustomPoint ? CUSTOM_POINT_COLOR : POINT_COLOR,
         stroke: POINT_STROKE,
         strokeWidth: 2,
         left: coords.x - POINT_RADIUS,
         top: coords.y - POINT_RADIUS,
-        selectable: true,
+        selectable: editMode === 'move',
         hasControls: false,
         hasBorders: false,
         opacity: opacity / 100,
-        hoverCursor: 'move',
+        hoverCursor: editMode === 'move' ? 'move' : editMode === 'remove' ? 'pointer' : 'default',
       });
 
       (circle as any).customName = `mesh_point_${point.id}`;
@@ -122,24 +133,24 @@ export const FacialMesh = ({
     });
 
     canvas.renderAll();
-  }, [canvas, meshData, visible, opacity, imageWidth, imageHeight, imageLeft, imageTop, clearMesh]);
+  }, [canvas, meshData, visible, opacity, imageWidth, imageHeight, imageLeft, imageTop, editMode, clearMesh]);
 
   // Desenhar/atualizar o mesh quando os dados mudarem
   useEffect(() => {
     drawMesh();
   }, [drawMesh]);
 
-  // Configurar evento de arrastar pontos
+  // Configurar eventos baseados no modo de edição
   useEffect(() => {
-    if (!canvas || !onPointMove) return;
+    if (!canvas) return;
 
     const handleObjectMoving = (e: any) => {
+      if (editMode !== 'move' || !onPointMove) return;
+      
       const target = e.target;
       if (!target || !(target as any).pointId) return;
 
       const pointId = (target as any).pointId;
-      const newX = (target.left! + POINT_RADIUS - imageLeft) / imageWidth;
-      const newY = (target.top! + POINT_RADIUS - imageTop) / imageHeight;
 
       // Atualizar as linhas conectadas
       meshData?.connections.forEach(conn => {
@@ -168,6 +179,8 @@ export const FacialMesh = ({
     };
 
     const handleObjectModified = (e: any) => {
+      if (editMode !== 'move' || !onPointMove) return;
+      
       const target = e.target;
       if (!target || !(target as any).pointId) return;
 
@@ -182,14 +195,47 @@ export const FacialMesh = ({
       onPointMove(pointId, clampedX, clampedY);
     };
 
+    const handleMouseDown = (e: any) => {
+      if (!e.pointer) return;
+      
+      const pointer = canvas.getPointer(e.e);
+      
+      // Verificar se clicou dentro da área da imagem
+      const isInImage = 
+        pointer.x >= imageLeft && 
+        pointer.x <= imageLeft + imageWidth &&
+        pointer.y >= imageTop && 
+        pointer.y <= imageTop + imageHeight;
+
+      if (editMode === 'add' && onPointAdd && isInImage) {
+        // Verificar se não clicou em um ponto existente
+        const clickedObject = canvas.findTarget(e.e);
+        if (clickedObject && (clickedObject as any).pointId) return;
+        
+        // Converter para coordenadas normalizadas
+        const normalizedX = (pointer.x - imageLeft) / imageWidth;
+        const normalizedY = (pointer.y - imageTop) / imageHeight;
+        onPointAdd(normalizedX, normalizedY);
+      }
+      
+      if (editMode === 'remove' && onPointRemove) {
+        const clickedObject = canvas.findTarget(e.e);
+        if (clickedObject && (clickedObject as any).pointId) {
+          onPointRemove((clickedObject as any).pointId);
+        }
+      }
+    };
+
     canvas.on('object:moving', handleObjectMoving);
     canvas.on('object:modified', handleObjectModified);
+    canvas.on('mouse:down', handleMouseDown);
 
     return () => {
       canvas.off('object:moving', handleObjectMoving);
       canvas.off('object:modified', handleObjectModified);
+      canvas.off('mouse:down', handleMouseDown);
     };
-  }, [canvas, meshData, imageWidth, imageHeight, imageLeft, imageTop, onPointMove]);
+  }, [canvas, meshData, editMode, imageWidth, imageHeight, imageLeft, imageTop, onPointMove, onPointAdd, onPointRemove]);
 
   // Limpar ao desmontar
   useEffect(() => {
