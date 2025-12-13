@@ -4,7 +4,9 @@ import * as fabric from 'fabric';
 import { ToolType } from './ToolPanel';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasStatusBar } from './CanvasStatusBar';
+import { FacialMesh } from './FacialMesh';
 import { useCanvasState, Point, CanvasObject } from '@/hooks/useCanvasState';
+import { FacialMeshData } from '@/types/facialLandmarks';
 import { cn } from '@/lib/utils';
 
 interface SimulationCanvasProps {
@@ -12,6 +14,10 @@ interface SimulationCanvasProps {
   activeTool: ToolType;
   isPanMode: boolean;
   onObjectAdded?: (object: CanvasObject) => void;
+  meshData?: FacialMeshData | null;
+  showMesh?: boolean;
+  meshOpacity?: number;
+  onMeshPointMove?: (pointId: string, x: number, y: number) => void;
 }
 
 export interface SimulationCanvasRef {
@@ -20,6 +26,7 @@ export interface SimulationCanvasRef {
   clear: () => void;
   exportImage: () => string | null;
   getCanvasState: () => any;
+  getCanvas: () => fabric.Canvas | null;
 }
 
 const TOOL_COLORS: Record<ToolType, string> = {
@@ -43,13 +50,14 @@ const TOOL_CURSORS: Record<ToolType, string> = {
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, showMesh = true, meshOpacity = 80, onMeshPointMove }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
     
     const [isReady, setIsReady] = useState(false);
     const [cursorPosition, setCursorPosition] = useState<Point>({ x: 0, y: 0 });
+    const [imageBounds, setImageBounds] = useState({ width: 0, height: 0, left: 0, top: 0 });
     
     const {
       zoom,
@@ -118,17 +126,30 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           (containerHeight - 80) / (img.height || 1)
         );
         
+        const imgWidth = (img.width || 0) * scale;
+        const imgHeight = (img.height || 0) * scale;
+        const imgLeft = (containerWidth - imgWidth) / 2;
+        const imgTop = (containerHeight - imgHeight) / 2;
+        
         img.set({
           scaleX: scale,
           scaleY: scale,
-          left: (containerWidth - (img.width || 0) * scale) / 2,
-          top: (containerHeight - (img.height || 0) * scale) / 2,
+          left: imgLeft,
+          top: imgTop,
           selectable: false,
           evented: false,
           opacity: layerOpacity.original / 100,
         });
         
         (img as any).customName = 'backgroundImage';
+        
+        // Salvar bounds da imagem para o mesh
+        setImageBounds({
+          width: imgWidth,
+          height: imgHeight,
+          left: imgLeft,
+          top: imgTop,
+        });
         
         const existingBg = canvas.getObjects().find((obj: any) => obj.customName === 'backgroundImage');
         if (existingBg) canvas.remove(existingBg);
@@ -147,6 +168,12 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           evented: false,
         });
         (placeholder as any).customName = 'backgroundImage';
+        setImageBounds({
+          width: 400,
+          height: 500,
+          left: (canvas.getWidth() - 400) / 2,
+          top: (canvas.getHeight() - 500) / 2,
+        });
         canvas.add(placeholder);
         canvas.sendObjectToBack(placeholder);
         canvas.renderAll();
@@ -319,7 +346,9 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         if (!canvas) return;
         
         const objs = canvas.getObjects().filter((obj: any) => 
-          !obj.customName?.startsWith('grid_') && obj.customName !== 'backgroundImage'
+          !obj.customName?.startsWith('grid_') && 
+          !obj.customName?.startsWith('mesh_') && 
+          obj.customName !== 'backgroundImage'
         );
         if (objs.length > 0) {
           canvas.remove(objs[objs.length - 1]);
@@ -335,7 +364,9 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         if (!canvas) return;
         
         const toRemove = canvas.getObjects().filter((obj: any) => 
-          !obj.customName?.startsWith('grid_') && obj.customName !== 'backgroundImage'
+          !obj.customName?.startsWith('grid_') && 
+          !obj.customName?.startsWith('mesh_') && 
+          obj.customName !== 'backgroundImage'
         );
         toRemove.forEach(obj => canvas.remove(obj));
         canvas.renderAll();
@@ -350,6 +381,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         if (!canvas) return null;
         return canvas.toJSON();
       },
+      getCanvas: () => fabricRef.current,
     }));
 
     const handleZoomIn = () => {
@@ -386,6 +418,19 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         )}
       >
         <canvas ref={canvasRef} />
+
+        {/* Facial Mesh Overlay */}
+        <FacialMesh
+          canvas={fabricRef.current}
+          meshData={meshData || null}
+          visible={showMesh && !!meshData}
+          opacity={meshOpacity}
+          imageWidth={imageBounds.width}
+          imageHeight={imageBounds.height}
+          imageLeft={imageBounds.left}
+          imageTop={imageBounds.top}
+          onPointMove={onMeshPointMove}
+        />
 
         <CanvasToolbar
           zoom={zoom}

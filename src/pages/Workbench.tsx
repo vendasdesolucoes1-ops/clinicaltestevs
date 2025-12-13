@@ -17,6 +17,7 @@ import { Viewer3D } from '@/components/workbench/Viewer3D';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
+import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
 import { api, mockCases, mockJobs, type ClinicalCase, type CaseVersion, type SimulationJob } from '@/lib/mockData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,8 @@ export default function Workbench() {
   const [isPanMode, setIsPanMode] = useState(false);
   const [processingJob, setProcessingJob] = useState<SimulationJob | null>(null);
   const [currentImageUrl, setCurrentImageUrl] = useState<string>('/placeholder.svg');
+  const [showMesh, setShowMesh] = useState(true);
+  const [meshOpacity, setMeshOpacity] = useState(80);
   
   const { 
     objects, 
@@ -43,6 +46,14 @@ export default function Workbench() {
     redo: stateRedo,
     saveVersion,
   } = useCanvasState();
+
+  const {
+    isAnalyzing,
+    meshData,
+    analyzeImage,
+    updatePoint,
+    clearMesh,
+  } = useFacialAnalysis();
 
   // Load case data
   useEffect(() => {
@@ -75,8 +86,8 @@ export default function Workbench() {
     }
   }, [id, navigate]);
 
-  // Handle adding a new photo
-  const handleAddPhoto = useCallback((file: File) => {
+  // Handle adding a new photo - automatically triggers facial analysis
+  const handleAddPhoto = useCallback(async (file: File) => {
     const url = URL.createObjectURL(file);
     setCurrentImageUrl(url);
     
@@ -93,7 +104,10 @@ export default function Workbench() {
         photos: [...prev.photos, newPhoto],
       } : null);
     }
-  }, [caseData]);
+
+    // Automatically analyze facial landmarks
+    await analyzeImage(url);
+  }, [caseData, analyzeImage]);
 
   // Handlers
   const handleUndo = useCallback(() => {
@@ -348,7 +362,21 @@ export default function Workbench() {
               imageUrl={currentImageUrl}
               activeTool={activeTool}
               isPanMode={isPanMode}
+              meshData={meshData}
+              showMesh={showMesh}
+              meshOpacity={meshOpacity}
+              onMeshPointMove={updatePoint}
             />
+          )}
+          
+          {/* Analyzing indicator */}
+          {isAnalyzing && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-50">
+              <div className="flex flex-col items-center gap-3 p-6 rounded-lg bg-card border border-border shadow-xl">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="text-sm text-foreground font-medium">Analisando landmarks faciais...</span>
+              </div>
+            </div>
           )}
           {viewMode === '3d' && (
             <Viewer3D 
