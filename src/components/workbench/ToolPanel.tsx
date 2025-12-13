@@ -413,6 +413,34 @@ export function ToolPanel({
               {meshEditMode === 'remove' && 'Clique em um ponto para removê-lo'}
               {meshEditMode === 'connect' && 'Clique em dois pontos para conectá-los'}
             </p>
+
+            {/* Color Legend */}
+            <Separator className="my-2" />
+            <div className="space-y-1.5">
+              <Label className="text-xs">Legenda das Linhas</Label>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-0.5 rounded" style={{ backgroundColor: 'rgb(255, 200, 0)' }} />
+                  <span className="text-[10px] text-muted-foreground">Horizontal</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-0.5 rounded" style={{ backgroundColor: 'rgb(255, 100, 100)' }} />
+                  <span className="text-[10px] text-muted-foreground">Vertical</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-0.5 rounded" style={{ backgroundColor: 'rgb(100, 255, 100)' }} />
+                  <span className="text-[10px] text-muted-foreground">Diagonal</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-0.5 rounded" style={{ backgroundColor: 'rgb(200, 100, 255)' }} />
+                  <span className="text-[10px] text-muted-foreground">Contorno</span>
+                </div>
+                <div className="flex items-center gap-1.5 col-span-2">
+                  <div className="w-4 h-0.5 rounded border-dashed" style={{ backgroundColor: 'rgb(255, 150, 50)', borderStyle: 'dashed' }} />
+                  <span className="text-[10px] text-muted-foreground">Custom (tracejada)</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
