@@ -34,6 +34,7 @@ export interface SimulationCanvasRef {
   exportImage: () => string | null;
   getCanvasState: () => any;
   getCanvas: () => fabric.Canvas | null;
+  getCanvasDataUrl: () => string | null;
 }
 
 const TOOL_COLORS: Record<ToolType, string> = {
@@ -389,6 +390,11 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         return canvas.toJSON();
       },
       getCanvas: () => fabricRef.current,
+      getCanvasDataUrl: () => {
+        const canvas = fabricRef.current;
+        if (!canvas) return null;
+        return canvas.toDataURL({ multiplier: 1, format: 'png', quality: 0.9 });
+      },
     }));
 
     const handleZoomIn = () => {

@@ -77,6 +77,7 @@ interface ToolPanelProps {
   onCancelConnection: () => void;
   isAnalyzingFace: boolean;
   symmetryResult: SymmetryResult | null;
+  onGetCanvasImage?: () => string | null;
 }
 
 const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
@@ -146,6 +147,7 @@ export function ToolPanel({
   onCancelConnection,
   isAnalyzingFace,
   symmetryResult,
+  onGetCanvasImage,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
   
@@ -450,7 +452,8 @@ export function ToolPanel({
         {/* Symmetry Analysis */}
         <SymmetryIndicator 
           symmetryResult={symmetryResult} 
-          isAnalyzing={isAnalyzingFace} 
+          isAnalyzing={isAnalyzingFace}
+          onGetCanvasImage={onGetCanvasImage}
         />
         <div className="p-3 border-b border-border">
           <div className="flex items-center gap-2 mb-3">

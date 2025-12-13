@@ -454,6 +454,7 @@ export default function Workbench() {
           onCancelConnection={cancelConnection}
           isAnalyzingFace={isAnalyzing}
           symmetryResult={symmetryResult}
+          onGetCanvasImage={() => canvasRef.current?.getCanvasDataUrl() ?? null}
         />
       </div>
     </div>
