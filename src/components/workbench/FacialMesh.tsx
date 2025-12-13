@@ -19,6 +19,7 @@ interface FacialMeshProps {
   onPointRemove?: (pointId: string) => void;
   onStartConnection?: (fromId: string) => void;
   onAddConnection?: (fromId: string, toId: string) => void;
+  onRemoveConnection?: (fromId: string, toId: string) => void;
 }
 
 const POINT_RADIUS = 6;
@@ -50,6 +51,7 @@ export const FacialMesh = ({
   onPointRemove,
   onStartConnection,
   onAddConnection,
+  onRemoveConnection,
 }: FacialMeshProps) => {
   const meshObjectsRef = useRef<fabric.Object[]>([]);
   const pointsMapRef = useRef<Map<string, fabric.Circle>>(new Map());
@@ -106,10 +108,14 @@ export const FacialMesh = ({
           strokeWidth: isCustomConn ? 2.5 : (conn.type === 'contour' ? 2 : 1.5),
           strokeDashArray: isCustomConn ? [5, 3] : undefined,
           selectable: false,
-          evented: false,
+          evented: isCustomConn && editMode === 'remove', // Allow events for custom lines in remove mode
           opacity: opacity / 100,
+          hoverCursor: isCustomConn && editMode === 'remove' ? 'pointer' : 'default',
         });
         (line as any).customName = `mesh_line_${conn.from}_${conn.to}`;
+        (line as any).isCustomConnection = isCustomConn;
+        (line as any).connectionFrom = conn.from;
+        (line as any).connectionTo = conn.to;
         canvas.add(line);
         meshObjectsRef.current.push(line);
       }
@@ -238,10 +244,23 @@ export const FacialMesh = ({
         onPointAdd(normalizedX, normalizedY);
       }
       
-      if (editMode === 'remove' && onPointRemove) {
+      if (editMode === 'remove') {
         const clickedObject = canvas.findTarget(e.e);
-        if (clickedObject && (clickedObject as any).pointId) {
-          onPointRemove((clickedObject as any).pointId);
+        if (clickedObject) {
+          // Check if clicked on a point
+          if ((clickedObject as any).pointId && onPointRemove) {
+            onPointRemove((clickedObject as any).pointId);
+            return;
+          }
+          // Check if clicked on a custom connection line
+          if ((clickedObject as any).isCustomConnection && onRemoveConnection) {
+            const fromId = (clickedObject as any).connectionFrom;
+            const toId = (clickedObject as any).connectionTo;
+            if (fromId && toId) {
+              onRemoveConnection(fromId, toId);
+              return;
+            }
+          }
         }
       }
       
@@ -271,7 +290,7 @@ export const FacialMesh = ({
       canvas.off('object:modified', handleObjectModified);
       canvas.off('mouse:down', handleMouseDown);
     };
-  }, [canvas, meshData, editMode, connectingFrom, imageWidth, imageHeight, imageLeft, imageTop, onPointMove, onPointAdd, onPointRemove, onStartConnection, onAddConnection]);
+  }, [canvas, meshData, editMode, connectingFrom, imageWidth, imageHeight, imageLeft, imageTop, onPointMove, onPointAdd, onPointRemove, onStartConnection, onAddConnection, onRemoveConnection]);
 
   // Handle tooltip on hover
   useEffect(() => {
