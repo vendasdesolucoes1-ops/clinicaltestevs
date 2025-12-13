@@ -13,9 +13,12 @@ interface FacialMeshProps {
   imageLeft: number;
   imageTop: number;
   editMode: MeshEditMode;
+  connectingFrom?: string | null;
   onPointMove?: (pointId: string, x: number, y: number) => void;
   onPointAdd?: (x: number, y: number) => void;
   onPointRemove?: (pointId: string) => void;
+  onStartConnection?: (fromId: string) => void;
+  onAddConnection?: (fromId: string, toId: string) => void;
 }
 
 const POINT_RADIUS = 6;
@@ -26,8 +29,10 @@ const HORIZONTAL_COLOR = 'rgba(255, 200, 0, 0.6)';
 const VERTICAL_COLOR = 'rgba(255, 100, 100, 0.6)';
 const DIAGONAL_COLOR = 'rgba(100, 255, 100, 0.5)';
 const CONTOUR_COLOR = 'rgba(200, 100, 255, 0.6)';
+const CUSTOM_CONNECTION_COLOR = 'rgba(255, 150, 50, 0.8)';
 
 const CUSTOM_POINT_COLOR = '#ff6b6b';
+const CONNECTING_POINT_COLOR = '#ffff00';
 
 export const FacialMesh = ({
   canvas,
@@ -39,9 +44,12 @@ export const FacialMesh = ({
   imageLeft,
   imageTop,
   editMode,
+  connectingFrom,
   onPointMove,
   onPointAdd,
   onPointRemove,
+  onStartConnection,
+  onAddConnection,
 }: FacialMeshProps) => {
   const meshObjectsRef = useRef<fabric.Object[]>([]);
   const pointsMapRef = useRef<Map<string, fabric.Circle>>(new Map());
@@ -56,12 +64,14 @@ export const FacialMesh = ({
     pointsMapRef.current.clear();
   }, [canvas]);
 
-  const getLineColor = (type: string): string => {
+  const getLineColor = (type: string, isCustom?: boolean): string => {
+    if (isCustom) return CUSTOM_CONNECTION_COLOR;
     switch (type) {
       case 'horizontal': return HORIZONTAL_COLOR;
       case 'vertical': return VERTICAL_COLOR;
       case 'diagonal': return DIAGONAL_COLOR;
       case 'contour': return CONTOUR_COLOR;
+      case 'custom': return CUSTOM_CONNECTION_COLOR;
       default: return LINE_COLOR;
     }
   };
@@ -89,9 +99,11 @@ export const FacialMesh = ({
       const to = pointsMap.get(conn.to);
       
       if (from && to) {
+        const isCustomConn = conn.isCustom || conn.type === 'custom';
         const line = new fabric.Line([from.x, from.y, to.x, to.y], {
-          stroke: getLineColor(conn.type),
-          strokeWidth: conn.type === 'contour' ? 2 : 1.5,
+          stroke: getLineColor(conn.type, conn.isCustom),
+          strokeWidth: isCustomConn ? 2.5 : (conn.type === 'contour' ? 2 : 1.5),
+          strokeDashArray: isCustomConn ? [5, 3] : undefined,
           selectable: false,
           evented: false,
           opacity: opacity / 100,
@@ -108,19 +120,26 @@ export const FacialMesh = ({
       if (!coords) return;
 
       const isCustomPoint = point.id.startsWith('custom_');
+      const isConnectingPoint = connectingFrom === point.id;
+      
+      // Determine point color based on state
+      let pointFill = isCustomPoint ? CUSTOM_POINT_COLOR : POINT_COLOR;
+      if (isConnectingPoint) {
+        pointFill = CONNECTING_POINT_COLOR;
+      }
       
       const circle = new fabric.Circle({
-        radius: POINT_RADIUS,
-        fill: isCustomPoint ? CUSTOM_POINT_COLOR : POINT_COLOR,
-        stroke: POINT_STROKE,
-        strokeWidth: 2,
-        left: coords.x - POINT_RADIUS,
-        top: coords.y - POINT_RADIUS,
+        radius: isConnectingPoint ? POINT_RADIUS + 2 : POINT_RADIUS,
+        fill: pointFill,
+        stroke: isConnectingPoint ? '#000000' : POINT_STROKE,
+        strokeWidth: isConnectingPoint ? 3 : 2,
+        left: coords.x - (isConnectingPoint ? POINT_RADIUS + 2 : POINT_RADIUS),
+        top: coords.y - (isConnectingPoint ? POINT_RADIUS + 2 : POINT_RADIUS),
         selectable: editMode === 'move',
         hasControls: false,
         hasBorders: false,
         opacity: opacity / 100,
-        hoverCursor: editMode === 'move' ? 'move' : editMode === 'remove' ? 'pointer' : 'default',
+        hoverCursor: editMode === 'move' ? 'move' : (editMode === 'remove' || editMode === 'connect') ? 'pointer' : 'default',
       });
 
       (circle as any).customName = `mesh_point_${point.id}`;
@@ -133,7 +152,7 @@ export const FacialMesh = ({
     });
 
     canvas.renderAll();
-  }, [canvas, meshData, visible, opacity, imageWidth, imageHeight, imageLeft, imageTop, editMode, clearMesh]);
+  }, [canvas, meshData, visible, opacity, imageWidth, imageHeight, imageLeft, imageTop, editMode, connectingFrom, clearMesh]);
 
   // Desenhar/atualizar o mesh quando os dados mudarem
   useEffect(() => {
@@ -224,6 +243,22 @@ export const FacialMesh = ({
           onPointRemove((clickedObject as any).pointId);
         }
       }
+      
+      // Handle connection mode
+      if (editMode === 'connect') {
+        const clickedObject = canvas.findTarget(e.e);
+        if (clickedObject && (clickedObject as any).pointId) {
+          const clickedPointId = (clickedObject as any).pointId;
+          
+          if (!connectingFrom && onStartConnection) {
+            // First point - start connection
+            onStartConnection(clickedPointId);
+          } else if (connectingFrom && onAddConnection) {
+            // Second point - complete connection
+            onAddConnection(connectingFrom, clickedPointId);
+          }
+        }
+      }
     };
 
     canvas.on('object:moving', handleObjectMoving);
@@ -235,7 +270,7 @@ export const FacialMesh = ({
       canvas.off('object:modified', handleObjectModified);
       canvas.off('mouse:down', handleMouseDown);
     };
-  }, [canvas, meshData, editMode, imageWidth, imageHeight, imageLeft, imageTop, onPointMove, onPointAdd, onPointRemove]);
+  }, [canvas, meshData, editMode, connectingFrom, imageWidth, imageHeight, imageLeft, imageTop, onPointMove, onPointAdd, onPointRemove, onStartConnection, onAddConnection]);
 
   // Limpar ao desmontar
   useEffect(() => {

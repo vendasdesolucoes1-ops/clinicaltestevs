@@ -19,9 +19,12 @@ interface SimulationCanvasProps {
   showMesh?: boolean;
   meshOpacity?: number;
   meshEditMode?: MeshEditMode;
+  connectingFrom?: string | null;
   onMeshPointMove?: (pointId: string, x: number, y: number) => void;
   onMeshPointAdd?: (x: number, y: number) => void;
   onMeshPointRemove?: (pointId: string) => void;
+  onMeshStartConnection?: (fromId: string) => void;
+  onMeshAddConnection?: (fromId: string, toId: string) => void;
 }
 
 export interface SimulationCanvasRef {
@@ -54,7 +57,7 @@ const TOOL_CURSORS: Record<ToolType, string> = {
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, showMesh = true, meshOpacity = 80, meshEditMode = 'move', onMeshPointMove, onMeshPointAdd, onMeshPointRemove }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, showMesh = true, meshOpacity = 80, meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -434,9 +437,12 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           imageLeft={imageBounds.left}
           imageTop={imageBounds.top}
           editMode={meshEditMode}
+          connectingFrom={connectingFrom}
           onPointMove={onMeshPointMove}
           onPointAdd={onMeshPointAdd}
           onPointRemove={onMeshPointRemove}
+          onStartConnection={onMeshStartConnection}
+          onAddConnection={onMeshAddConnection}
         />
 
         <CanvasToolbar

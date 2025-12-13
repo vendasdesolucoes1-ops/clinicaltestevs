@@ -20,7 +20,8 @@ import {
   Minus,
   Grid3X3,
   Eye,
-  EyeOff
+  EyeOff,
+  Link2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -71,6 +72,8 @@ interface ToolPanelProps {
   onMeshDensityChange: (density: MeshDensity) => void;
   meshEditMode: MeshEditMode;
   onMeshEditModeChange: (mode: MeshEditMode) => void;
+  isConnecting: boolean;
+  onCancelConnection: () => void;
   isAnalyzingFace: boolean;
 }
 
@@ -137,6 +140,8 @@ export function ToolPanel({
   onMeshDensityChange,
   meshEditMode,
   onMeshEditModeChange,
+  isConnecting,
+  onCancelConnection,
   isAnalyzingFace,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
@@ -370,13 +375,43 @@ export function ToolPanel({
                   </TooltipTrigger>
                   <TooltipContent>Remover ponto</TooltipContent>
                 </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={meshEditMode === 'connect' ? 'tool-active' : 'outline'}
+                      size="sm"
+                      className="flex-1 h-7 px-2"
+                      onClick={() => onMeshEditModeChange('connect')}
+                      disabled={!showMesh}
+                    >
+                      <Link2 className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Conectar pontos</TooltipContent>
+                </Tooltip>
               </div>
             </div>
+
+            {/* Connection status */}
+            {isConnecting && (
+              <div className="flex items-center justify-between p-2 bg-primary/10 rounded border border-primary/20">
+                <span className="text-xs text-primary">Selecionando segundo ponto...</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={onCancelConnection}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            )}
 
             <p className="text-[10px] text-muted-foreground">
               {meshEditMode === 'move' && 'Arraste os pontos para ajustar'}
               {meshEditMode === 'add' && 'Clique na imagem para adicionar ponto'}
               {meshEditMode === 'remove' && 'Clique em um ponto para removê-lo'}
+              {meshEditMode === 'connect' && 'Clique em dois pontos para conectá-los'}
             </p>
           </div>
         </div>

@@ -1,9 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { FacialMeshData, FacialPoint, MeshDensity, getConnectionsByDensity } from '@/types/facialLandmarks';
+import { FacialMeshData, FacialPoint, FacialConnection, MeshDensity, getConnectionsByDensity } from '@/types/facialLandmarks';
 import { toast } from 'sonner';
 
-export type MeshEditMode = 'move' | 'add' | 'remove';
+export type MeshEditMode = 'move' | 'add' | 'remove' | 'connect';
 
 interface UseFacialAnalysisReturn {
   isAnalyzing: boolean;
@@ -12,28 +12,36 @@ interface UseFacialAnalysisReturn {
   setMeshDensity: (density: MeshDensity) => void;
   meshEditMode: MeshEditMode;
   setMeshEditMode: (mode: MeshEditMode) => void;
+  connectingFrom: string | null;
   analyzeImage: (imageUrl: string) => Promise<FacialMeshData | null>;
   updatePoint: (pointId: string, x: number, y: number) => void;
   addPoint: (x: number, y: number) => void;
   removePoint: (pointId: string) => void;
+  addConnection: (fromId: string, toId: string) => void;
+  removeConnection: (fromId: string, toId: string) => void;
+  startConnection: (fromId: string) => void;
+  cancelConnection: () => void;
   clearMesh: () => void;
 }
 
 export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [points, setPoints] = useState<FacialPoint[] | null>(null);
+  const [customConnections, setCustomConnections] = useState<FacialConnection[]>([]);
   const [meshDensity, setMeshDensity] = useState<MeshDensity>('dense');
   const [meshEditMode, setMeshEditMode] = useState<MeshEditMode>('move');
   const [customPointCounter, setCustomPointCounter] = useState(1);
+  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
 
-  // Compute meshData based on points and current density
+  // Compute meshData based on points, density and custom connections
   const meshData = useMemo((): FacialMeshData | null => {
     if (!points) return null;
+    const baseConnections = getConnectionsByDensity(meshDensity);
     return {
       points,
-      connections: getConnectionsByDensity(meshDensity),
+      connections: [...baseConnections, ...customConnections],
     };
-  }, [points, meshDensity]);
+  }, [points, meshDensity, customConnections]);
 
   const imageToBase64 = async (imageUrl: string): Promise<string> => {
     // Se já for base64, retorna diretamente
@@ -129,11 +137,67 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
       toast.success('Ponto removido');
       return filtered;
     });
+    // Also remove any connections involving this point
+    setCustomConnections(prev => 
+      prev.filter(c => c.from !== pointId && c.to !== pointId)
+    );
+  }, []);
+
+  const startConnection = useCallback((fromId: string) => {
+    setConnectingFrom(fromId);
+    toast.info('Clique em outro ponto para conectar');
+  }, []);
+
+  const cancelConnection = useCallback(() => {
+    setConnectingFrom(null);
+  }, []);
+
+  const addConnection = useCallback((fromId: string, toId: string) => {
+    if (fromId === toId) {
+      toast.error('Não é possível conectar um ponto a si mesmo');
+      return;
+    }
+    
+    // Check if connection already exists
+    const exists = customConnections.some(
+      c => (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId)
+    );
+    
+    if (exists) {
+      toast.error('Conexão já existe');
+      setConnectingFrom(null);
+      return;
+    }
+
+    const newConnection: FacialConnection = {
+      from: fromId,
+      to: toId,
+      type: 'custom',
+      isCustom: true,
+    };
+    
+    setCustomConnections(prev => [...prev, newConnection]);
+    setConnectingFrom(null);
+    toast.success('Conexão criada');
+  }, [customConnections]);
+
+  const removeConnection = useCallback((fromId: string, toId: string) => {
+    setCustomConnections(prev => {
+      const filtered = prev.filter(
+        c => !((c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId))
+      );
+      if (filtered.length < prev.length) {
+        toast.success('Conexão removida');
+      }
+      return filtered;
+    });
   }, []);
 
   const clearMesh = useCallback(() => {
     setPoints(null);
+    setCustomConnections([]);
     setCustomPointCounter(1);
+    setConnectingFrom(null);
   }, []);
 
   return {
@@ -143,10 +207,15 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     setMeshDensity,
     meshEditMode,
     setMeshEditMode,
+    connectingFrom,
     analyzeImage,
     updatePoint,
     addPoint,
     removePoint,
+    addConnection,
+    removeConnection,
+    startConnection,
+    cancelConnection,
     clearMesh,
   };
 };

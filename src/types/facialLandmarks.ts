@@ -11,7 +11,8 @@ export interface FacialPoint {
 export interface FacialConnection {
   from: string;
   to: string;
-  type: 'horizontal' | 'vertical' | 'diagonal' | 'contour';
+  type: 'horizontal' | 'vertical' | 'diagonal' | 'contour' | 'custom';
+  isCustom?: boolean;
 }
 
 export type MeshDensity = 'simple' | 'dense';
