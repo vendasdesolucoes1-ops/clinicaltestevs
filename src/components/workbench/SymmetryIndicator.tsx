@@ -1,20 +1,24 @@
 import { SymmetryResult } from '@/types/facialLandmarks';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, FileText, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, FileText, Loader2, Image as ImageIcon } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 
 interface SymmetryIndicatorProps {
   symmetryResult: SymmetryResult | null;
   isAnalyzing: boolean;
+  onGetCanvasImage?: () => string | null;
 }
 
-export function SymmetryIndicator({ symmetryResult, isAnalyzing }: SymmetryIndicatorProps) {
+export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImage }: SymmetryIndicatorProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [includeImage, setIncludeImage] = useState(true);
 
   const handleExportPDF = useCallback(async () => {
     if (!symmetryResult) return;
@@ -43,7 +47,30 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing }: SymmetryIndic
       doc.setTextColor(100, 100, 100);
       doc.text('Simulação para planejamento — não substitui avaliação clínica', margin, y);
       doc.setTextColor(0, 0, 0);
-      y += 15;
+      y += 10;
+
+      // Include canvas image if option is selected
+      if (includeImage && onGetCanvasImage) {
+        const imageDataUrl = onGetCanvasImage();
+        if (imageDataUrl) {
+          try {
+            // Calculate image dimensions to fit in the PDF
+            const imgWidth = pageWidth - 2 * margin;
+            const imgHeight = imgWidth * 0.75; // Assuming 4:3 aspect ratio
+            
+            doc.addImage(imageDataUrl, 'PNG', margin, y, imgWidth, imgHeight);
+            y += imgHeight + 10;
+          } catch (imgError) {
+            console.warn('Não foi possível incluir a imagem no PDF:', imgError);
+          }
+        }
+      }
+
+      // Overall Score Section
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Pontuação Geral de Simetria', margin, y);
+      y += 8;
 
       // Overall Score Section
       doc.setFontSize(14);
@@ -136,7 +163,7 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing }: SymmetryIndic
     } finally {
       setIsExporting(false);
     }
-  }, [symmetryResult]);
+  }, [symmetryResult, includeImage, onGetCanvasImage]);
 
   if (isAnalyzing) {
     return (
@@ -217,6 +244,21 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing }: SymmetryIndic
           </div>
         </div>
       </div>
+
+      {/* Export options */}
+      {onGetCanvasImage && (
+        <div className="flex items-center gap-2 mb-3 px-1">
+          <Checkbox 
+            id="includeImage" 
+            checked={includeImage} 
+            onCheckedChange={(checked) => setIncludeImage(checked === true)}
+          />
+          <Label htmlFor="includeImage" className="text-[10px] text-muted-foreground cursor-pointer flex items-center gap-1">
+            <ImageIcon className="h-3 w-3" />
+            Incluir imagem com mesh no PDF
+          </Label>
+        </div>
+      )}
 
       {/* Overall Score Bar */}
       <div className="space-y-1 mb-3">
