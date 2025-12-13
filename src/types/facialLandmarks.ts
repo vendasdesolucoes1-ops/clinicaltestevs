@@ -14,13 +14,15 @@ export interface FacialConnection {
   type: 'horizontal' | 'vertical' | 'diagonal' | 'contour';
 }
 
+export type MeshDensity = 'simple' | 'dense';
+
 export interface FacialMeshData {
   points: FacialPoint[];
   connections: FacialConnection[];
 }
 
-// Conexões padrão para criar o mesh de simetria
-export const DEFAULT_CONNECTIONS: FacialConnection[] = [
+// Conexões SIMPLES - linhas principais de simetria
+export const SIMPLE_CONNECTIONS: FacialConnection[] = [
   // Linha central vertical
   { from: 'glabella', to: 'nasion', type: 'vertical' },
   { from: 'nasion', to: 'pronasale', type: 'vertical' },
@@ -29,34 +31,13 @@ export const DEFAULT_CONNECTIONS: FacialConnection[] = [
   { from: 'labiale_superius', to: 'labiale_inferius', type: 'vertical' },
   { from: 'labiale_inferius', to: 'gnathion', type: 'vertical' },
   
-  // Linhas horizontais - Olhos
+  // Linhas horizontais principais
   { from: 'orbitale_left_inner', to: 'orbitale_right_inner', type: 'horizontal' },
   { from: 'orbitale_left_outer', to: 'orbitale_right_outer', type: 'horizontal' },
-  
-  // Linhas horizontais - Boca
   { from: 'cheilion_left', to: 'cheilion_right', type: 'horizontal' },
-  
-  // Linhas horizontais - Contorno
   { from: 'zygion_left', to: 'zygion_right', type: 'horizontal' },
   { from: 'gonion_left', to: 'gonion_right', type: 'horizontal' },
-  
-  // Diagonais para triangulação - Lado esquerdo
-  { from: 'glabella', to: 'orbitale_left_inner', type: 'diagonal' },
-  { from: 'nasion', to: 'orbitale_left_inner', type: 'diagonal' },
-  { from: 'nasion', to: 'orbitale_left_outer', type: 'diagonal' },
-  { from: 'pronasale', to: 'zygion_left', type: 'diagonal' },
-  { from: 'subnasale', to: 'cheilion_left', type: 'diagonal' },
-  { from: 'cheilion_left', to: 'gonion_left', type: 'diagonal' },
-  { from: 'gnathion', to: 'gonion_left', type: 'diagonal' },
-  
-  // Diagonais para triangulação - Lado direito
-  { from: 'glabella', to: 'orbitale_right_inner', type: 'diagonal' },
-  { from: 'nasion', to: 'orbitale_right_inner', type: 'diagonal' },
-  { from: 'nasion', to: 'orbitale_right_outer', type: 'diagonal' },
-  { from: 'pronasale', to: 'zygion_right', type: 'diagonal' },
-  { from: 'subnasale', to: 'cheilion_right', type: 'diagonal' },
-  { from: 'cheilion_right', to: 'gonion_right', type: 'diagonal' },
-  { from: 'gnathion', to: 'gonion_right', type: 'diagonal' },
+  { from: 'temple_left', to: 'temple_right', type: 'horizontal' },
   
   // Contorno facial
   { from: 'temple_left', to: 'zygion_left', type: 'contour' },
@@ -65,11 +46,63 @@ export const DEFAULT_CONNECTIONS: FacialConnection[] = [
   { from: 'gnathion', to: 'gonion_right', type: 'contour' },
   { from: 'gonion_right', to: 'zygion_right', type: 'contour' },
   { from: 'zygion_right', to: 'temple_right', type: 'contour' },
+];
+
+// Conexões DENSAS - triangulação completa para análise detalhada
+export const DENSE_CONNECTIONS: FacialConnection[] = [
+  // Inclui todas as conexões simples
+  ...SIMPLE_CONNECTIONS,
   
   // Conexões dos olhos
   { from: 'orbitale_left_inner', to: 'orbitale_left_outer', type: 'horizontal' },
   { from: 'orbitale_right_inner', to: 'orbitale_right_outer', type: 'horizontal' },
+  
+  // Diagonais da testa para os olhos - Esquerdo
+  { from: 'glabella', to: 'orbitale_left_inner', type: 'diagonal' },
+  { from: 'glabella', to: 'orbitale_right_inner', type: 'diagonal' },
+  { from: 'temple_left', to: 'orbitale_left_outer', type: 'diagonal' },
+  { from: 'temple_right', to: 'orbitale_right_outer', type: 'diagonal' },
+  
+  // Diagonais do nariz
+  { from: 'nasion', to: 'orbitale_left_inner', type: 'diagonal' },
+  { from: 'nasion', to: 'orbitale_right_inner', type: 'diagonal' },
+  { from: 'nasion', to: 'orbitale_left_outer', type: 'diagonal' },
+  { from: 'nasion', to: 'orbitale_right_outer', type: 'diagonal' },
+  
+  // Diagonais zigomáticas
+  { from: 'orbitale_left_outer', to: 'zygion_left', type: 'diagonal' },
+  { from: 'orbitale_right_outer', to: 'zygion_right', type: 'diagonal' },
+  { from: 'pronasale', to: 'zygion_left', type: 'diagonal' },
+  { from: 'pronasale', to: 'zygion_right', type: 'diagonal' },
+  
+  // Diagonais da boca
+  { from: 'subnasale', to: 'cheilion_left', type: 'diagonal' },
+  { from: 'subnasale', to: 'cheilion_right', type: 'diagonal' },
+  { from: 'labiale_superius', to: 'cheilion_left', type: 'diagonal' },
+  { from: 'labiale_superius', to: 'cheilion_right', type: 'diagonal' },
+  
+  // Diagonais do queixo
+  { from: 'cheilion_left', to: 'gonion_left', type: 'diagonal' },
+  { from: 'cheilion_right', to: 'gonion_right', type: 'diagonal' },
+  { from: 'labiale_inferius', to: 'gonion_left', type: 'diagonal' },
+  { from: 'labiale_inferius', to: 'gonion_right', type: 'diagonal' },
+  { from: 'gnathion', to: 'gonion_left', type: 'diagonal' },
+  { from: 'gnathion', to: 'gonion_right', type: 'diagonal' },
+  
+  // Conexões cruzadas para triangulação
+  { from: 'zygion_left', to: 'cheilion_left', type: 'diagonal' },
+  { from: 'zygion_right', to: 'cheilion_right', type: 'diagonal' },
+  { from: 'zygion_left', to: 'pronasale', type: 'diagonal' },
+  { from: 'zygion_right', to: 'pronasale', type: 'diagonal' },
 ];
+
+// Função helper para obter conexões baseado na densidade
+export const getConnectionsByDensity = (density: MeshDensity): FacialConnection[] => {
+  return density === 'simple' ? SIMPLE_CONNECTIONS : DENSE_CONNECTIONS;
+};
+
+// Manter compatibilidade - DEFAULT_CONNECTIONS agora é o denso
+export const DEFAULT_CONNECTIONS = DENSE_CONNECTIONS;
 
 // Nomes amigáveis para exibição
 export const POINT_LABELS: Record<string, string> = {
