@@ -17,7 +17,10 @@ import {
   AlertCircle,
   Loader2,
   Plus,
-  Minus
+  Minus,
+  Grid3X3,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -56,6 +59,12 @@ interface ToolPanelProps {
   canRedo: boolean;
   processingJob: SimulationJob | null;
   onStartSimulation: () => void;
+  // Mesh controls
+  showMesh: boolean;
+  onShowMeshChange: (show: boolean) => void;
+  meshOpacity: number;
+  onMeshOpacityChange: (opacity: number) => void;
+  isAnalyzingFace: boolean;
 }
 
 const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
@@ -113,6 +122,11 @@ export function ToolPanel({
   canRedo,
   processingJob,
   onStartSimulation,
+  showMesh,
+  onShowMeshChange,
+  meshOpacity,
+  onMeshOpacityChange,
+  isAnalyzingFace,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
   
@@ -226,6 +240,57 @@ export function ToolPanel({
               </TooltipTrigger>
               <TooltipContent>Limpar tudo</TooltipContent>
             </Tooltip>
+          </div>
+        </div>
+
+        {/* Facial Mesh Controls */}
+        <div className="p-3 border-b border-border">
+          <div className="flex items-center gap-2 mb-3">
+            <Grid3X3 className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-foreground">Mesh Facial</span>
+            {isAnalyzingFace && (
+              <Loader2 className="h-3 w-3 animate-spin text-primary ml-auto" />
+            )}
+          </div>
+          
+          <div className="space-y-3">
+            {/* Show/Hide Toggle */}
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Mostrar Mesh</Label>
+              <Button
+                variant={showMesh ? 'tool-active' : 'outline'}
+                size="sm"
+                onClick={() => onShowMeshChange(!showMesh)}
+                className="h-7 px-2"
+              >
+                {showMesh ? (
+                  <Eye className="h-3.5 w-3.5 mr-1" />
+                ) : (
+                  <EyeOff className="h-3.5 w-3.5 mr-1" />
+                )}
+                <span className="text-xs">{showMesh ? 'Visível' : 'Oculto'}</span>
+              </Button>
+            </div>
+
+            {/* Opacity Slider */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Opacidade</Label>
+                <span className="text-xs text-muted-foreground font-mono">{Math.round(meshOpacity * 100)}%</span>
+              </div>
+              <Slider
+                value={[meshOpacity * 100]}
+                onValueChange={([v]) => onMeshOpacityChange(v / 100)}
+                min={10}
+                max={100}
+                step={5}
+                disabled={!showMesh}
+              />
+            </div>
+
+            <p className="text-[10px] text-muted-foreground">
+              Arraste os pontos para ajustar a análise de simetria
+            </p>
           </div>
         </div>
 

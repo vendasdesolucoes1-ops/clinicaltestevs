@@ -422,6 +422,11 @@ export default function Workbench() {
           canRedo={false}
           processingJob={processingJob}
           onStartSimulation={handleStartSimulation}
+          showMesh={showMesh}
+          onShowMeshChange={setShowMesh}
+          meshOpacity={meshOpacity}
+          onMeshOpacityChange={setMeshOpacity}
+          isAnalyzingFace={isAnalyzing}
         />
       </div>
     </div>
