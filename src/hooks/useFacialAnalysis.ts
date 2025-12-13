@@ -1,11 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { FacialMeshData, FacialPoint, DEFAULT_CONNECTIONS } from '@/types/facialLandmarks';
+import { FacialMeshData, FacialPoint, MeshDensity, getConnectionsByDensity } from '@/types/facialLandmarks';
 import { toast } from 'sonner';
 
 interface UseFacialAnalysisReturn {
   isAnalyzing: boolean;
   meshData: FacialMeshData | null;
+  meshDensity: MeshDensity;
+  setMeshDensity: (density: MeshDensity) => void;
   analyzeImage: (imageUrl: string) => Promise<FacialMeshData | null>;
   updatePoint: (pointId: string, x: number, y: number) => void;
   clearMesh: () => void;
@@ -13,7 +15,17 @@ interface UseFacialAnalysisReturn {
 
 export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [meshData, setMeshData] = useState<FacialMeshData | null>(null);
+  const [points, setPoints] = useState<FacialPoint[] | null>(null);
+  const [meshDensity, setMeshDensity] = useState<MeshDensity>('dense');
+
+  // Compute meshData based on points and current density
+  const meshData = useMemo((): FacialMeshData | null => {
+    if (!points) return null;
+    return {
+      points,
+      connections: getConnectionsByDensity(meshDensity),
+    };
+  }, [points, meshDensity]);
 
   const imageToBase64 = async (imageUrl: string): Promise<string> => {
     // Se já for base64, retorna diretamente
@@ -57,12 +69,14 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
         return null;
       }
 
+      const detectedPoints = data.points as FacialPoint[];
+      setPoints(detectedPoints);
+
       const meshResult: FacialMeshData = {
-        points: data.points as FacialPoint[],
-        connections: DEFAULT_CONNECTIONS,
+        points: detectedPoints,
+        connections: getConnectionsByDensity(meshDensity),
       };
 
-      setMeshData(meshResult);
       toast.success('Landmarks faciais detectados!');
       
       return meshResult;
@@ -74,28 +88,26 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     } finally {
       setIsAnalyzing(false);
     }
-  }, []);
+  }, [meshDensity]);
 
   const updatePoint = useCallback((pointId: string, x: number, y: number) => {
-    setMeshData(prev => {
+    setPoints(prev => {
       if (!prev) return null;
-      
-      return {
-        ...prev,
-        points: prev.points.map(p => 
-          p.id === pointId ? { ...p, x, y } : p
-        ),
-      };
+      return prev.map(p => 
+        p.id === pointId ? { ...p, x, y } : p
+      );
     });
   }, []);
 
   const clearMesh = useCallback(() => {
-    setMeshData(null);
+    setPoints(null);
   }, []);
 
   return {
     isAnalyzing,
     meshData,
+    meshDensity,
+    setMeshDensity,
     analyzeImage,
     updatePoint,
     clearMesh,

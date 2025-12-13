@@ -47,6 +47,8 @@ import { useCanvasState } from '@/hooks/useCanvasState';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+import { type MeshDensity } from '@/types/facialLandmarks';
+
 export type ToolType = 'select' | 'warp' | 'volume' | 'incision' | 'suture' | 'annotate' | 'eraser';
 
 interface ToolPanelProps {
@@ -64,6 +66,8 @@ interface ToolPanelProps {
   onShowMeshChange: (show: boolean) => void;
   meshOpacity: number;
   onMeshOpacityChange: (opacity: number) => void;
+  meshDensity: MeshDensity;
+  onMeshDensityChange: (density: MeshDensity) => void;
   isAnalyzingFace: boolean;
 }
 
@@ -126,6 +130,8 @@ export function ToolPanel({
   onShowMeshChange,
   meshOpacity,
   onMeshOpacityChange,
+  meshDensity,
+  onMeshDensityChange,
   isAnalyzingFace,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
@@ -286,6 +292,31 @@ export function ToolPanel({
                 step={5}
                 disabled={!showMesh}
               />
+            </div>
+
+            {/* Density Toggle */}
+            <div className="space-y-2">
+              <Label className="text-xs">Densidade</Label>
+              <div className="flex gap-2">
+                <Button
+                  variant={meshDensity === 'simple' ? 'tool-active' : 'outline'}
+                  size="sm"
+                  className="flex-1 h-7"
+                  onClick={() => onMeshDensityChange('simple')}
+                  disabled={!showMesh}
+                >
+                  <span className="text-xs">Simples</span>
+                </Button>
+                <Button
+                  variant={meshDensity === 'dense' ? 'tool-active' : 'outline'}
+                  size="sm"
+                  className="flex-1 h-7"
+                  onClick={() => onMeshDensityChange('dense')}
+                  disabled={!showMesh}
+                >
+                  <span className="text-xs">Denso</span>
+                </Button>
+              </div>
             </div>
 
             <p className="text-[10px] text-muted-foreground">

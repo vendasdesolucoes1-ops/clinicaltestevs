@@ -50,6 +50,8 @@ export default function Workbench() {
   const {
     isAnalyzing,
     meshData,
+    meshDensity,
+    setMeshDensity,
     analyzeImage,
     updatePoint,
     clearMesh,
@@ -426,6 +428,8 @@ export default function Workbench() {
           onShowMeshChange={setShowMesh}
           meshOpacity={meshOpacity}
           onMeshOpacityChange={setMeshOpacity}
+          meshDensity={meshDensity}
+          onMeshDensityChange={setMeshDensity}
           isAnalyzingFace={isAnalyzing}
         />
       </div>
