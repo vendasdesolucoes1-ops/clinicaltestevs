@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
-import { FacialMeshData, FacialPoint, POINT_LABELS } from '@/types/facialLandmarks';
+import { FacialMeshData, FacialPoint, POINT_LABELS, REGION_COLORS, AnatomicalRegion } from '@/types/facialLandmarks';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 
 interface FacialMeshProps {
@@ -22,18 +22,18 @@ interface FacialMeshProps {
   onRemoveConnection?: (fromId: string, toId: string) => void;
 }
 
-const POINT_RADIUS = 3; // Reduced from 6 to 3 for denser mesh
-const LINE_COLOR = 'rgba(0, 200, 255, 0.7)';
-const POINT_COLOR = '#00c8ff';
-const POINT_STROKE = '#ffffff';
-const HORIZONTAL_COLOR = 'rgba(255, 200, 0, 0.6)';
+const POINT_RADIUS = 3;
+const MIDLINE_COLOR = '#ff6b6b';
+const MIDLINE_WIDTH = 2.5;
+const HORIZONTAL_COLOR = 'rgba(255, 200, 0, 0.7)';
 const VERTICAL_COLOR = 'rgba(255, 100, 100, 0.6)';
 const DIAGONAL_COLOR = 'rgba(100, 255, 100, 0.5)';
-const CONTOUR_COLOR = 'rgba(200, 100, 255, 0.6)';
-const CUSTOM_CONNECTION_COLOR = 'rgba(255, 150, 50, 0.8)';
-
+const CONTOUR_COLOR = 'rgba(200, 100, 255, 0.7)';
+const CUSTOM_CONNECTION_COLOR = 'rgba(255, 150, 50, 0.9)';
+const POINT_STROKE = '#ffffff';
 const CUSTOM_POINT_COLOR = '#ff6b6b';
 const CONNECTING_POINT_COLOR = '#ffff00';
+const ROI_BORDER_COLOR = 'rgba(0, 200, 255, 0.3)';
 
 export const FacialMesh = ({
   canvas,
@@ -55,11 +55,10 @@ export const FacialMesh = ({
 }: FacialMeshProps) => {
   const meshObjectsRef = useRef<fabric.Object[]>([]);
   const pointsMapRef = useRef<Map<string, fabric.Circle>>(new Map());
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string } | null>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string; region?: string } | null>(null);
 
   const clearMesh = useCallback(() => {
     if (!canvas) return;
-    
     meshObjectsRef.current.forEach(obj => {
       canvas.remove(obj);
     });
@@ -70,13 +69,30 @@ export const FacialMesh = ({
   const getLineColor = (type: string, isCustom?: boolean): string => {
     if (isCustom) return CUSTOM_CONNECTION_COLOR;
     switch (type) {
+      case 'midline': return MIDLINE_COLOR;
       case 'horizontal': return HORIZONTAL_COLOR;
       case 'vertical': return VERTICAL_COLOR;
       case 'diagonal': return DIAGONAL_COLOR;
       case 'contour': return CONTOUR_COLOR;
       case 'custom': return CUSTOM_CONNECTION_COLOR;
-      default: return LINE_COLOR;
+      default: return 'rgba(0, 200, 255, 0.7)';
     }
+  };
+
+  const getLineWidth = (type: string, isCustom?: boolean): number => {
+    if (type === 'midline') return MIDLINE_WIDTH;
+    if (isCustom || type === 'custom') return 2;
+    if (type === 'contour') return 1.8;
+    return 1.2;
+  };
+
+  const getPointColor = (point: FacialPoint, isConnecting: boolean): string => {
+    if (isConnecting) return CONNECTING_POINT_COLOR;
+    if (point.id.startsWith('custom_')) return CUSTOM_POINT_COLOR;
+    
+    // Cor baseada na região anatômica
+    const region = point.region as AnatomicalRegion;
+    return REGION_COLORS[region] || '#00c8ff';
   };
 
   const drawMesh = useCallback(() => {
@@ -96,6 +112,27 @@ export const FacialMesh = ({
       pointsMap.set(point.id, { x: canvasX, y: canvasY });
     });
 
+    // Desenhar ROI facial (contorno da área detectada)
+    if (meshData.faceROI) {
+      const roi = meshData.faceROI;
+      const roiRect = new fabric.Rect({
+        left: imageLeft + roi.x * imageWidth,
+        top: imageTop + roi.y * imageHeight,
+        width: roi.width * imageWidth,
+        height: roi.height * imageHeight,
+        fill: 'transparent',
+        stroke: ROI_BORDER_COLOR,
+        strokeWidth: 1,
+        strokeDashArray: [8, 4],
+        selectable: false,
+        evented: false,
+        opacity: opacity / 100 * 0.5,
+      });
+      (roiRect as any).customName = 'face_roi';
+      canvas.add(roiRect);
+      meshObjectsRef.current.push(roiRect);
+    }
+
     // Desenhar as linhas de conexão
     meshData.connections.forEach(conn => {
       const from = pointsMap.get(conn.from);
@@ -103,19 +140,24 @@ export const FacialMesh = ({
       
       if (from && to) {
         const isCustomConn = conn.isCustom || conn.type === 'custom';
+        const isMidline = conn.type === 'midline';
+        
         const line = new fabric.Line([from.x, from.y, to.x, to.y], {
           stroke: getLineColor(conn.type, conn.isCustom),
-          strokeWidth: isCustomConn ? 2.5 : (conn.type === 'contour' ? 2 : 1.5),
+          strokeWidth: getLineWidth(conn.type, conn.isCustom),
           strokeDashArray: isCustomConn ? [5, 3] : undefined,
           selectable: false,
-          evented: isCustomConn && editMode === 'remove', // Allow events for custom lines in remove mode
+          evented: isCustomConn && editMode === 'remove',
           opacity: opacity / 100,
           hoverCursor: isCustomConn && editMode === 'remove' ? 'pointer' : 'default',
         });
+        
         (line as any).customName = `mesh_line_${conn.from}_${conn.to}`;
         (line as any).isCustomConnection = isCustomConn;
+        (line as any).isMidline = isMidline;
         (line as any).connectionFrom = conn.from;
         (line as any).connectionTo = conn.to;
+        
         canvas.add(line);
         meshObjectsRef.current.push(line);
       }
@@ -126,20 +168,15 @@ export const FacialMesh = ({
       const coords = pointsMap.get(point.id);
       if (!coords) return;
 
-      const isCustomPoint = point.id.startsWith('custom_');
       const isConnectingPoint = connectingFrom === point.id;
-      
-      // Determine point color based on state
-      let pointFill = isCustomPoint ? CUSTOM_POINT_COLOR : POINT_COLOR;
-      if (isConnectingPoint) {
-        pointFill = CONNECTING_POINT_COLOR;
-      }
+      const pointColor = getPointColor(point, isConnectingPoint);
+      const isMidlinePoint = meshData.midlinePoints?.includes(point.id);
       
       const circle = new fabric.Circle({
-        radius: isConnectingPoint ? POINT_RADIUS + 2 : POINT_RADIUS,
-        fill: pointFill,
-        stroke: isConnectingPoint ? '#000000' : POINT_STROKE,
-        strokeWidth: isConnectingPoint ? 3 : 2,
+        radius: isConnectingPoint ? POINT_RADIUS + 2 : (isMidlinePoint ? POINT_RADIUS + 1 : POINT_RADIUS),
+        fill: pointColor,
+        stroke: isConnectingPoint ? '#000000' : (isMidlinePoint ? MIDLINE_COLOR : POINT_STROKE),
+        strokeWidth: isConnectingPoint ? 3 : (isMidlinePoint ? 2 : 1.5),
         left: coords.x - (isConnectingPoint ? POINT_RADIUS + 2 : POINT_RADIUS),
         top: coords.y - (isConnectingPoint ? POINT_RADIUS + 2 : POINT_RADIUS),
         selectable: editMode === 'move',
@@ -152,6 +189,7 @@ export const FacialMesh = ({
       (circle as any).customName = `mesh_point_${point.id}`;
       (circle as any).pointId = point.id;
       (circle as any).pointLabel = POINT_LABELS[point.id] || point.name;
+      (circle as any).pointRegion = point.region;
 
       canvas.add(circle);
       meshObjectsRef.current.push(circle);
@@ -161,12 +199,11 @@ export const FacialMesh = ({
     canvas.renderAll();
   }, [canvas, meshData, visible, opacity, imageWidth, imageHeight, imageLeft, imageTop, editMode, connectingFrom, clearMesh]);
 
-  // Desenhar/atualizar o mesh quando os dados mudarem
   useEffect(() => {
     drawMesh();
   }, [drawMesh]);
 
-  // Configurar eventos baseados no modo de edição
+  // Configurar eventos
   useEffect(() => {
     if (!canvas) return;
 
@@ -178,7 +215,6 @@ export const FacialMesh = ({
 
       const pointId = (target as any).pointId;
 
-      // Atualizar as linhas conectadas
       meshData?.connections.forEach(conn => {
         if (conn.from === pointId || conn.to === pointId) {
           const lineObj = meshObjectsRef.current.find(
@@ -194,7 +230,6 @@ export const FacialMesh = ({
               const y1 = fromPoint.top! + POINT_RADIUS;
               const x2 = toPoint.left! + POINT_RADIUS;
               const y2 = toPoint.top! + POINT_RADIUS;
-
               lineObj.set({ x1, y1, x2, y2 });
             }
           }
@@ -214,7 +249,6 @@ export const FacialMesh = ({
       const newX = (target.left! + POINT_RADIUS - imageLeft) / imageWidth;
       const newY = (target.top! + POINT_RADIUS - imageTop) / imageHeight;
 
-      // Clamp entre 0 e 1
       const clampedX = Math.max(0, Math.min(1, newX));
       const clampedY = Math.max(0, Math.min(1, newY));
 
@@ -226,7 +260,6 @@ export const FacialMesh = ({
       
       const pointer = canvas.getPointer(e.e);
       
-      // Verificar se clicou dentro da área da imagem
       const isInImage = 
         pointer.x >= imageLeft && 
         pointer.x <= imageLeft + imageWidth &&
@@ -234,11 +267,9 @@ export const FacialMesh = ({
         pointer.y <= imageTop + imageHeight;
 
       if (editMode === 'add' && onPointAdd && isInImage) {
-        // Verificar se não clicou em um ponto existente
         const clickedObject = canvas.findTarget(e.e);
         if (clickedObject && (clickedObject as any).pointId) return;
         
-        // Converter para coordenadas normalizadas
         const normalizedX = (pointer.x - imageLeft) / imageWidth;
         const normalizedY = (pointer.y - imageTop) / imageHeight;
         onPointAdd(normalizedX, normalizedY);
@@ -247,12 +278,10 @@ export const FacialMesh = ({
       if (editMode === 'remove') {
         const clickedObject = canvas.findTarget(e.e);
         if (clickedObject) {
-          // Check if clicked on a point
           if ((clickedObject as any).pointId && onPointRemove) {
             onPointRemove((clickedObject as any).pointId);
             return;
           }
-          // Check if clicked on a custom connection line
           if ((clickedObject as any).isCustomConnection && onRemoveConnection) {
             const fromId = (clickedObject as any).connectionFrom;
             const toId = (clickedObject as any).connectionTo;
@@ -264,17 +293,14 @@ export const FacialMesh = ({
         }
       }
       
-      // Handle connection mode
       if (editMode === 'connect') {
         const clickedObject = canvas.findTarget(e.e);
         if (clickedObject && (clickedObject as any).pointId) {
           const clickedPointId = (clickedObject as any).pointId;
           
           if (!connectingFrom && onStartConnection) {
-            // First point - start connection
             onStartConnection(clickedPointId);
           } else if (connectingFrom && onAddConnection) {
-            // Second point - complete connection
             onAddConnection(connectingFrom, clickedPointId);
           }
         }
@@ -298,12 +324,13 @@ export const FacialMesh = ({
 
     const handleMouseOver = (e: any) => {
       const target = e.target;
-      if (target && (target as any).pointId && (target as any).pointLabel) {
+      if (target && (target as any).pointId) {
         const pointer = canvas.getPointer(e.e);
         setTooltip({
           x: pointer.x,
-          y: pointer.y - 20,
+          y: pointer.y - 25,
           label: (target as any).pointLabel,
+          region: (target as any).pointRegion,
         });
       }
     };
@@ -324,25 +351,28 @@ export const FacialMesh = ({
     };
   }, [canvas]);
 
-  // Limpar ao desmontar
   useEffect(() => {
     return () => {
       clearMesh();
     };
   }, [clearMesh]);
 
-  // Render tooltip as a portal-like element positioned absolutely
   if (tooltip) {
     return (
       <div
-        className="absolute pointer-events-none z-50 px-2 py-1 text-xs font-medium bg-popover text-popover-foreground border border-border rounded shadow-lg"
+        className="absolute pointer-events-none z-50 px-2 py-1.5 text-xs font-medium bg-popover text-popover-foreground border border-border rounded-lg shadow-lg"
         style={{
           left: tooltip.x,
           top: tooltip.y,
           transform: 'translateX(-50%)',
         }}
       >
-        {tooltip.label}
+        <div>{tooltip.label}</div>
+        {tooltip.region && (
+          <div className="text-[10px] text-muted-foreground capitalize">
+            {tooltip.region.replace('_', ' ')}
+          </div>
+        )}
       </div>
     );
   }

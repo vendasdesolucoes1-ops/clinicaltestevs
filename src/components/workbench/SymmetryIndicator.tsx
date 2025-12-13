@@ -1,11 +1,12 @@
 import { SymmetryResult } from '@/types/facialLandmarks';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, FileText, Loader2, Image as ImageIcon } from 'lucide-react';
+import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, FileText, Loader2, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 
@@ -17,6 +18,7 @@ interface SymmetryIndicatorProps {
 
 export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImage }: SymmetryIndicatorProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showRegions, setShowRegions] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [includeImage, setIncludeImage] = useState(true);
 
@@ -49,15 +51,13 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImag
       doc.setTextColor(0, 0, 0);
       y += 10;
 
-      // Include canvas image if option is selected
+      // Include canvas image
       if (includeImage && onGetCanvasImage) {
         const imageDataUrl = onGetCanvasImage();
         if (imageDataUrl) {
           try {
-            // Calculate image dimensions to fit in the PDF
             const imgWidth = pageWidth - 2 * margin;
-            const imgHeight = imgWidth * 0.75; // Assuming 4:3 aspect ratio
-            
+            const imgHeight = imgWidth * 0.75;
             doc.addImage(imageDataUrl, 'PNG', margin, y, imgWidth, imgHeight);
             y += imgHeight + 10;
           } catch (imgError) {
@@ -66,13 +66,7 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImag
         }
       }
 
-      // Overall Score Section
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Pontuação Geral de Simetria', margin, y);
-      y += 8;
-
-      // Overall Score Section
+      // Overall Score
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.text('Pontuação Geral de Simetria', margin, y);
@@ -94,26 +88,83 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImag
                             symmetryResult.overallScore >= 60 ? 'Assimetria moderada detectada' :
                             'Assimetria significativa requer atenção';
       doc.text(interpretation, margin, y);
-      y += 20;
+      y += 15;
 
-      // Detailed Analysis Table
+      // Critical Areas
+      if (symmetryResult.criticalAreas && symmetryResult.criticalAreas.length > 0) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(239, 68, 68);
+        doc.text('⚠ Áreas Críticas', margin, y);
+        doc.setTextColor(0, 0, 0);
+        y += 6;
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(symmetryResult.criticalAreas.join(', '), margin, y);
+        y += 12;
+      }
+
+      // Regional Analysis
+      if (symmetryResult.regionalScores && symmetryResult.regionalScores.length > 0) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Análise por Região Anatômica', margin, y);
+        y += 10;
+
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setFillColor(240, 240, 240);
+        doc.rect(margin, y - 4, pageWidth - 2 * margin, 8, 'F');
+        doc.text('Região', margin + 2, y);
+        doc.text('Score', margin + 60, y);
+        doc.text('Status', margin + 90, y);
+        y += 8;
+
+        doc.setFont('helvetica', 'normal');
+        symmetryResult.regionalScores.forEach((region, index) => {
+          if (y > 270) {
+            doc.addPage();
+            y = margin;
+          }
+
+          if (index % 2 === 0) {
+            doc.setFillColor(250, 250, 250);
+            doc.rect(margin, y - 4, pageWidth - 2 * margin, 7, 'F');
+          }
+
+          doc.text(region.regionLabel, margin + 2, y);
+          
+          const regionColor = region.score >= 90 ? [34, 197, 94] : 
+                              region.score >= 75 ? [234, 179, 8] :
+                              region.score >= 60 ? [249, 115, 22] : [239, 68, 68];
+          doc.setTextColor(regionColor[0], regionColor[1], regionColor[2]);
+          doc.text(`${region.score}%`, margin + 60, y);
+          doc.setTextColor(0, 0, 0);
+          
+          const status = region.score >= 75 ? 'OK' : region.score >= 60 ? 'Atenção' : 'Crítico';
+          doc.text(status, margin + 90, y);
+          y += 7;
+        });
+        y += 10;
+      }
+
+      // Detailed Pairs Table
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text('Análise por Região Anatômica', margin, y);
+      doc.text('Detalhamento por Pares Simétricos', margin, y);
       y += 10;
 
-      // Table Header
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
       doc.setFillColor(240, 240, 240);
       doc.rect(margin, y - 4, pageWidth - 2 * margin, 8, 'F');
-      doc.text('Região', margin + 2, y);
+      doc.text('Par', margin + 2, y);
       doc.text('Desvio', margin + 80, y);
-      doc.text('Dif. Vertical', margin + 110, y);
-      doc.text('Dif. Horizontal', margin + 145, y);
+      doc.text('Dif. V', margin + 110, y);
+      doc.text('Dif. H', margin + 140, y);
       y += 8;
 
-      // Table Content
       doc.setFont('helvetica', 'normal');
       symmetryResult.pairs.forEach((pair, index) => {
         if (y > 270) {
@@ -136,25 +187,19 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImag
         doc.setTextColor(0, 0, 0);
         
         doc.text(`${pair.verticalDiff}%`, margin + 110, y);
-        doc.text(`${pair.horizontalDiff}%`, margin + 145, y);
+        doc.text(`${pair.horizontalDiff}%`, margin + 140, y);
         y += 7;
       });
 
       y += 10;
 
-      // Legend
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.text('Legenda: Dif. Vertical = diferença de altura entre pontos espelhados', margin, y);
-      y += 5;
-      doc.text('Dif. Horizontal = diferença de distância do eixo central', margin, y);
-      y += 10;
-
       // Footer
       doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text('V = diferença vertical | H = diferença horizontal do eixo central', margin, y);
+      y += 10;
       doc.text('Gerado por InsightsCirurgic — Ferramenta de Planejamento Cirúrgico', margin, 285);
 
-      // Save
       doc.save(`relatorio-simetria-${new Date().toISOString().split('T')[0]}.pdf`);
       toast.success('Relatório PDF exportado com sucesso');
     } catch (error) {
@@ -245,6 +290,23 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImag
         </div>
       </div>
 
+      {/* Critical Areas Alert */}
+      {symmetryResult.criticalAreas && symmetryResult.criticalAreas.length > 0 && (
+        <div className="flex items-start gap-2 p-2 mb-3 bg-destructive/10 border border-destructive/20 rounded-md">
+          <AlertCircle className="h-3.5 w-3.5 text-destructive mt-0.5 shrink-0" />
+          <div>
+            <p className="text-[10px] font-medium text-destructive">Áreas Críticas</p>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {symmetryResult.criticalAreas.map((area) => (
+                <Badge key={area} variant="destructive" className="text-[9px] h-4 px-1.5">
+                  {area}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Export options */}
       {onGetCanvasImage && (
         <div className="flex items-center gap-2 mb-3 px-1">
@@ -274,6 +336,42 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImag
         </div>
       </div>
 
+      {/* Regional Scores */}
+      {symmetryResult.regionalScores && symmetryResult.regionalScores.length > 0 && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full h-6 text-xs justify-between px-2 mb-2"
+            onClick={() => setShowRegions(!showRegions)}
+          >
+            <span>Análise por Região</span>
+            {showRegions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </Button>
+
+          {showRegions && (
+            <div className="space-y-1.5 mb-3">
+              {symmetryResult.regionalScores.map((region) => (
+                <div key={region.region} className="flex items-center justify-between py-1 px-2 bg-muted/30 rounded">
+                  <span className="text-[10px] text-foreground">{region.regionLabel}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className={cn('h-full rounded-full', getProgressColor(region.score))}
+                        style={{ width: `${region.score}%` }}
+                      />
+                    </div>
+                    <span className={cn('text-[10px] font-mono w-10 text-right', getScoreColor(region.score))}>
+                      {region.score}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
       {/* Expand/Collapse Details */}
       <Button
         variant="ghost"
@@ -281,7 +379,7 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImag
         className="w-full h-6 text-xs justify-between px-2"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <span>Detalhes por região</span>
+        <span>Detalhes por pares</span>
         {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
       </Button>
 

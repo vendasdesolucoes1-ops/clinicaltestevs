@@ -1,6 +1,16 @@
 import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { FacialMeshData, FacialPoint, FacialConnection, MeshDensity, getConnectionsByDensity } from '@/types/facialLandmarks';
+import { 
+  FacialMeshData, 
+  FacialPoint, 
+  FacialConnection, 
+  MeshDensity, 
+  FaceROI,
+  getConnectionsByDensity,
+  canConnect,
+  isPointInROI,
+  AnatomicalRegion
+} from '@/types/facialLandmarks';
 import { toast } from 'sonner';
 
 export type MeshEditMode = 'move' | 'add' | 'remove' | 'connect';
@@ -8,6 +18,8 @@ export type MeshEditMode = 'move' | 'add' | 'remove' | 'connect';
 interface UseFacialAnalysisReturn {
   isAnalyzing: boolean;
   meshData: FacialMeshData | null;
+  faceROI: FaceROI | null;
+  midlinePoints: string[];
   meshDensity: MeshDensity;
   setMeshDensity: (density: MeshDensity) => void;
   meshEditMode: MeshEditMode;
@@ -15,7 +27,7 @@ interface UseFacialAnalysisReturn {
   connectingFrom: string | null;
   analyzeImage: (imageUrl: string) => Promise<FacialMeshData | null>;
   updatePoint: (pointId: string, x: number, y: number) => void;
-  addPoint: (x: number, y: number) => void;
+  addPoint: (x: number, y: number, region?: AnatomicalRegion) => void;
   removePoint: (pointId: string) => void;
   addConnection: (fromId: string, toId: string) => void;
   removeConnection: (fromId: string, toId: string) => void;
@@ -27,6 +39,8 @@ interface UseFacialAnalysisReturn {
 export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [points, setPoints] = useState<FacialPoint[] | null>(null);
+  const [faceROI, setFaceROI] = useState<FaceROI | null>(null);
+  const [midlinePoints, setMidlinePoints] = useState<string[]>([]);
   const [customConnections, setCustomConnections] = useState<FacialConnection[]>([]);
   const [meshDensity, setMeshDensity] = useState<MeshDensity>('dense');
   const [meshEditMode, setMeshEditMode] = useState<MeshEditMode>('move');
@@ -36,23 +50,21 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
   // Compute meshData based on points, density and custom connections
   const meshData = useMemo((): FacialMeshData | null => {
     if (!points) return null;
-    const baseConnections = getConnectionsByDensity(meshDensity, points);
+    const baseConnections = getConnectionsByDensity(meshDensity, points, midlinePoints);
     return {
       points,
       connections: [...baseConnections, ...customConnections],
+      faceROI: faceROI || undefined,
+      midlinePoints,
     };
-  }, [points, meshDensity, customConnections]);
+  }, [points, meshDensity, customConnections, faceROI, midlinePoints]);
 
   const imageToBase64 = async (imageUrl: string): Promise<string> => {
-    // Se já for base64, retorna diretamente
     if (imageUrl.startsWith('data:')) {
       return imageUrl;
     }
-
-    // Converte URL para base64
     const response = await fetch(imageUrl);
     const blob = await response.blob();
-    
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
@@ -65,7 +77,7 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     setIsAnalyzing(true);
     
     try {
-      toast.info('Analisando landmarks faciais...', { duration: 3000 });
+      toast.info('Detectando região facial e landmarks anatômicos...', { duration: 4000 });
       
       const imageBase64 = await imageToBase64(imageUrl);
       
@@ -85,15 +97,35 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
         return null;
       }
 
-      const detectedPoints = data.points as FacialPoint[];
+      // Processar ROI facial
+      const roi: FaceROI = data.faceROI || { x: 0, y: 0, width: 1, height: 1 };
+      setFaceROI(roi);
+      
+      // Processar pontos da linha média
+      const midline: string[] = data.midlinePoints || [];
+      setMidlinePoints(midline);
+
+      // Converter pontos garantindo que tenham região anatômica
+      const detectedPoints: FacialPoint[] = data.points.map((p: any) => ({
+        id: p.id,
+        name: p.name || p.id,
+        x: p.x,
+        y: p.y,
+        region: p.region || inferRegionFromId(p.id),
+        adjacentRegions: p.adjacentRegions || [],
+      }));
+      
       setPoints(detectedPoints);
 
       const meshResult: FacialMeshData = {
         points: detectedPoints,
-        connections: getConnectionsByDensity(meshDensity, detectedPoints),
+        connections: getConnectionsByDensity(meshDensity, detectedPoints, midline),
+        faceROI: roi,
+        midlinePoints: midline,
       };
 
-      toast.success(`${detectedPoints.length} landmarks faciais detectados!`);
+      const regionsDetected = new Set(detectedPoints.map(p => p.region)).size;
+      toast.success(`${detectedPoints.length} landmarks em ${regionsDetected} regiões anatômicas`);
       
       return meshResult;
       
@@ -106,28 +138,63 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     }
   }, [meshDensity]);
 
+  // Inferir região anatômica baseado no ID do ponto (fallback)
+  const inferRegionFromId = (id: string): AnatomicalRegion => {
+    if (id.includes('supercilium_left') || id.includes('eyebrow_left')) return 'eyebrow_left';
+    if (id.includes('supercilium_right') || id.includes('eyebrow_right')) return 'eyebrow_right';
+    if (id.includes('orbitale_left') || id.includes('palpebra') && id.includes('left') || id === 'pupil_left') return 'eye_left';
+    if (id.includes('orbitale_right') || id.includes('palpebra') && id.includes('right') || id === 'pupil_right') return 'eye_right';
+    if (id.includes('alar') || id.includes('columella') || id === 'pronasale' || id === 'subnasale') return 'nose_lower';
+    if (id === 'nasion' || id === 'rhinion') return 'nose_upper';
+    if (id.includes('cheilion') || id.includes('vermillion') || id.includes('cupid') || id.includes('philtrum')) return 'mouth_perioral';
+    if (id === 'labiale_superius' || id === 'stomion') return 'mouth_upper';
+    if (id === 'labiale_inferius') return 'mouth_lower';
+    if (id.includes('gonion') || id.includes('mandible_left')) return 'mandible_left';
+    if (id.includes('mandible_right')) return 'mandible_right';
+    if (id.includes('zygion_left') || id.includes('malar_left')) return 'zygomatic_left';
+    if (id.includes('zygion_right') || id.includes('malar_right')) return 'zygomatic_right';
+    if (id.includes('cheek_left')) return 'cheek_left';
+    if (id.includes('cheek_right')) return 'cheek_right';
+    if (id === 'pogonion' || id === 'gnathion' || id === 'menton' || id === 'labiomental_crease') return 'chin';
+    if (id === 'trichion' || id === 'metopion' || id.includes('temple')) return 'forehead';
+    if (id === 'glabella') return 'midline';
+    return 'midline';
+  };
+
   const updatePoint = useCallback((pointId: string, x: number, y: number) => {
+    // Validar que o novo ponto está dentro da ROI
+    if (faceROI && !isPointInROI({ x, y }, faceROI)) {
+      toast.error('Ponto deve permanecer dentro do rosto');
+      return;
+    }
+    
     setPoints(prev => {
       if (!prev) return null;
       return prev.map(p => 
         p.id === pointId ? { ...p, x, y } : p
       );
     });
-  }, []);
+  }, [faceROI]);
 
-  const addPoint = useCallback((x: number, y: number) => {
+  const addPoint = useCallback((x: number, y: number, region: AnatomicalRegion = 'cheek_left') => {
+    // Validar que o ponto está dentro da ROI
+    if (faceROI && !isPointInROI({ x, y }, faceROI)) {
+      toast.error('Ponto deve estar dentro da região facial');
+      return;
+    }
+    
     const newPoint: FacialPoint = {
       id: `custom_point_${customPointCounter}`,
-      name: `Ponto ${customPointCounter}`,
+      name: `Ponto Personalizado ${customPointCounter}`,
       x,
       y,
-      category: 'contour',
+      region,
     };
     
     setCustomPointCounter(prev => prev + 1);
     setPoints(prev => prev ? [...prev, newPoint] : [newPoint]);
-    toast.success(`Ponto adicionado`);
-  }, [customPointCounter]);
+    toast.success(`Ponto adicionado na região ${region}`);
+  }, [customPointCounter, faceROI]);
 
   const removePoint = useCallback((pointId: string) => {
     setPoints(prev => {
@@ -137,7 +204,6 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
       toast.success('Ponto removido');
       return filtered;
     });
-    // Also remove any connections involving this point
     setCustomConnections(prev => 
       prev.filter(c => c.from !== pointId && c.to !== pointId)
     );
@@ -158,7 +224,24 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
       return;
     }
     
-    // Check if connection already exists
+    // Buscar os pontos para validar conexão
+    const fromPoint = points?.find(p => p.id === fromId);
+    const toPoint = points?.find(p => p.id === toId);
+    
+    if (!fromPoint || !toPoint) {
+      toast.error('Pontos não encontrados');
+      setConnectingFrom(null);
+      return;
+    }
+    
+    // Validar que as regiões são adjacentes
+    if (!canConnect(fromPoint, toPoint)) {
+      toast.error(`Conexão inválida: ${fromPoint.region} não é adjacente a ${toPoint.region}`);
+      setConnectingFrom(null);
+      return;
+    }
+    
+    // Verificar se conexão já existe
     const exists = customConnections.some(
       c => (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId)
     );
@@ -179,7 +262,7 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     setCustomConnections(prev => [...prev, newConnection]);
     setConnectingFrom(null);
     toast.success('Conexão criada');
-  }, [customConnections]);
+  }, [customConnections, points]);
 
   const removeConnection = useCallback((fromId: string, toId: string) => {
     setCustomConnections(prev => {
@@ -195,6 +278,8 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
 
   const clearMesh = useCallback(() => {
     setPoints(null);
+    setFaceROI(null);
+    setMidlinePoints([]);
     setCustomConnections([]);
     setCustomPointCounter(1);
     setConnectingFrom(null);
@@ -203,6 +288,8 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
   return {
     isAnalyzing,
     meshData,
+    faceROI,
+    midlinePoints,
     meshDensity,
     setMeshDensity,
     meshEditMode,
