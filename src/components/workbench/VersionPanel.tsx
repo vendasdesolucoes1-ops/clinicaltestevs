@@ -1,5 +1,5 @@
 // Version Panel - Left side panel with case info and version management
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { 
   GitBranch, 
   Plus, 
@@ -13,7 +13,9 @@ import {
   AlertCircle,
   Edit3,
   Trash2,
-  Eye
+  Eye,
+  Camera,
+  Upload
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +53,7 @@ interface VersionPanelProps {
   onRenameVersion: (version: CaseVersion, newName: string) => void;
   onDeleteVersion: (version: CaseVersion) => void;
   onExport: () => void;
+  onAddPhoto?: (file: File) => void;
 }
 
 function VersionStatusIcon({ status }: { status: CaseVersion['status'] }) {
@@ -86,11 +89,24 @@ export function VersionPanel({
   onRenameVersion,
   onDeleteVersion,
   onExport,
+  onAddPhoto,
 }: VersionPanelProps) {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [targetVersion, setTargetVersion] = useState<CaseVersion | null>(null);
   const [newVersionName, setNewVersionName] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onAddPhoto) {
+      onAddPhoto(file);
+      toast.success('Foto adicionada com sucesso');
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const baseVersion = caseData.versions.find(v => v.type === 'base');
   const versionsA = caseData.versions.filter(v => v.type === 'A');
@@ -131,23 +147,43 @@ export function VersionPanel({
 
   return (
     <div className="h-full flex flex-col bg-card border-r border-border">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handlePhotoUpload}
+      />
+
       {/* Case Header */}
       <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-2 mb-2">
-          <Badge 
-            variant="outline" 
-            className={cn(
-              "text-xs",
-              caseData.type === 'queimadura' 
-                ? 'border-warning/30 text-warning bg-warning/10' 
-                : 'border-primary/30 text-primary bg-primary/10'
-            )}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Badge 
+              variant="outline" 
+              className={cn(
+                "text-xs",
+                caseData.type === 'queimadura' 
+                  ? 'border-warning/30 text-warning bg-warning/10' 
+                  : 'border-primary/30 text-primary bg-primary/10'
+              )}
+            >
+              {caseData.type === 'queimadura' ? 'Queimadura' : 'Trauma'}
+            </Badge>
+            <Badge variant="outline" className="text-xs border-border">
+              {caseData.photos.length} fotos
+            </Badge>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="icon-sm" 
+            className="h-7 w-7"
+            onClick={() => fileInputRef.current?.click()}
+            title="Adicionar foto"
           >
-            {caseData.type === 'queimadura' ? 'Queimadura' : 'Trauma'}
-          </Badge>
-          <Badge variant="outline" className="text-xs border-border">
-            {caseData.photos.length} fotos
-          </Badge>
+            <Camera className="h-4 w-4" />
+          </Button>
         </div>
         <h2 className="font-semibold text-foreground">{caseData.codename}</h2>
         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{caseData.notes}</p>
