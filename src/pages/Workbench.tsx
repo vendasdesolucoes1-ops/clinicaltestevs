@@ -18,6 +18,7 @@ import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
+import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
 import { api, mockCases, mockJobs, type ClinicalCase, type CaseVersion, type SimulationJob } from '@/lib/mockData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -64,6 +65,9 @@ export default function Workbench() {
     cancelConnection,
     clearMesh,
   } = useFacialAnalysis();
+
+  // Calcular análise de simetria
+  const symmetryResult = useSymmetryAnalysis(meshData);
 
   // Load case data
   useEffect(() => {
@@ -449,6 +453,7 @@ export default function Workbench() {
           isConnecting={!!connectingFrom}
           onCancelConnection={cancelConnection}
           isAnalyzingFace={isAnalyzing}
+          symmetryResult={symmetryResult}
         />
       </div>
     </div>
