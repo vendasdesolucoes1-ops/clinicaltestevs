@@ -22,7 +22,7 @@ interface FacialMeshProps {
   onRemoveConnection?: (fromId: string, toId: string) => void;
 }
 
-const POINT_RADIUS = 6;
+const POINT_RADIUS = 3; // Reduced from 6 to 3 for denser mesh
 const LINE_COLOR = 'rgba(0, 200, 255, 0.7)';
 const POINT_COLOR = '#00c8ff';
 const POINT_STROKE = '#ffffff';
