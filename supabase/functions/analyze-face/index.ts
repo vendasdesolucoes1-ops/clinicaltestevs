@@ -1,3 +1,4 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -124,28 +125,33 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      console.error('LOVABLE_API_KEY não configurada');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    if (!OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY não configurada');
       return new Response(
         JSON.stringify({ error: 'Configuração de API incompleta' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Iniciando análise facial anatômica com Lovable AI...');
+    console.log('Iniciando análise facial anatômica com OpenAI GPT-4 Vision...');
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Preparar a URL da imagem
+    const imageUrl = imageBase64.startsWith('data:') 
+      ? imageBase64 
+      : `data:image/jpeg;base64,${imageBase64}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'gpt-4o',
         messages: [
           {
             role: 'user',
@@ -154,12 +160,15 @@ serve(async (req) => {
               {
                 type: 'image_url',
                 image_url: {
-                  url: imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`
+                  url: imageUrl,
+                  detail: 'high'
                 }
               }
             ]
           }
         ],
+        max_tokens: 4096,
+        temperature: 0.1, // Baixa temperatura para resultados mais consistentes
       }),
       signal: controller.signal,
     });
@@ -168,7 +177,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erro da API Lovable:', response.status, errorText);
+      console.error('Erro da API OpenAI:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -176,10 +185,17 @@ serve(async (req) => {
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      if (response.status === 402) {
+      if (response.status === 401) {
         return new Response(
-          JSON.stringify({ error: 'Créditos insuficientes. Adicione créditos ao workspace.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ error: 'Chave de API inválida ou expirada.' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (response.status === 400) {
+        console.error('Erro 400 - Bad Request:', errorText);
+        return new Response(
+          JSON.stringify({ error: 'Imagem inválida ou formato não suportado.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
@@ -200,7 +216,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('Resposta da IA recebida, processando...');
+    console.log('Resposta da OpenAI recebida, processando...');
 
     // Extrair JSON da resposta (pode vir com markdown)
     let jsonStr = content;
@@ -251,8 +267,16 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Erro na função analyze-face:', error);
+    
+    if (error instanceof Error && error.name === 'AbortError') {
+      return new Response(
+        JSON.stringify({ error: 'Timeout na análise. A imagem pode ser muito complexa.' }),
+        { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Erro desconhecido' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
