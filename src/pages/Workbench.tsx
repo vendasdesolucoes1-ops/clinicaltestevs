@@ -1,21 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+// Workbench - Main simulation screen
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
-  ArrowLeft, 
   Layers, 
   Box, 
   GitCompare,
   ChevronRight,
   Loader2
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VersionPanel } from '@/components/workbench/VersionPanel';
 import { ToolPanel, type ToolType } from '@/components/workbench/ToolPanel';
-import { Canvas2D } from '@/components/workbench/Canvas2D';
+import { SimulationCanvas, SimulationCanvasRef } from '@/components/workbench/SimulationCanvas';
 import { Viewer3D } from '@/components/workbench/Viewer3D';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useCanvasState } from '@/hooks/useCanvasState';
 import { api, mockCases, mockJobs, type ClinicalCase, type CaseVersion, type SimulationJob } from '@/lib/mockData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -25,15 +26,22 @@ type ViewMode = '2d' | '3d' | 'compare';
 export default function Workbench() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const canvasRef = useRef<SimulationCanvasRef>(null);
   
   const [caseData, setCaseData] = useState<ClinicalCase | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedVersion, setSelectedVersion] = useState<CaseVersion | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('2d');
   const [activeTool, setActiveTool] = useState<ToolType>('select');
-  const [undoStack, setUndoStack] = useState<any[]>([]);
-  const [redoStack, setRedoStack] = useState<any[]>([]);
+  const [isPanMode, setIsPanMode] = useState(false);
   const [processingJob, setProcessingJob] = useState<SimulationJob | null>(null);
+  
+  const { 
+    objects, 
+    undo: stateUndo, 
+    redo: stateRedo,
+    saveVersion,
+  } = useCanvasState();
 
   // Load case data
   useEffect(() => {
@@ -44,7 +52,6 @@ export default function Workbench() {
         if (data) {
           setCaseData(data);
           setSelectedVersion(data.versions[0] || null);
-          // Check for processing jobs
           const job = mockJobs.find(j => j.caseId === id && j.status === 'processando');
           setProcessingJob(job || null);
         } else {
@@ -63,52 +70,48 @@ export default function Workbench() {
     }
   }, [id, navigate]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      switch (e.key.toLowerCase()) {
-        case 'z':
-          if (undoStack.length > 0) handleUndo();
-          break;
-        case 'y':
-          if (redoStack.length > 0) handleRedo();
-          break;
-        case ' ':
-          e.preventDefault();
-          // Space for pan mode
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undoStack, redoStack]);
-
+  // Handlers
   const handleUndo = useCallback(() => {
-    if (undoStack.length === 0) return;
-    const last = undoStack[undoStack.length - 1];
-    setUndoStack(prev => prev.slice(0, -1));
-    setRedoStack(prev => [...prev, last]);
-    toast.info('Ação desfeita');
-  }, [undoStack]);
+    canvasRef.current?.undo();
+    stateUndo();
+    toast.info('Ação desfeita', { duration: 1500 });
+  }, [stateUndo]);
 
   const handleRedo = useCallback(() => {
-    if (redoStack.length === 0) return;
-    const last = redoStack[redoStack.length - 1];
-    setRedoStack(prev => prev.slice(0, -1));
-    setUndoStack(prev => [...prev, last]);
-    toast.info('Ação refeita');
-  }, [redoStack]);
+    canvasRef.current?.redo();
+    stateRedo();
+    toast.info('Ação refeita', { duration: 1500 });
+  }, [stateRedo]);
 
-  const handleCanvasAction = useCallback((action: { type: string; data: any }) => {
-    setUndoStack(prev => [...prev, action]);
-    setRedoStack([]);
+  const handleClear = useCallback(() => {
+    canvasRef.current?.clear();
+    toast.info('Canvas limpo');
   }, []);
 
+  const handleEscape = useCallback(() => {
+    setActiveTool('select');
+    setIsPanMode(false);
+  }, []);
+
+  const handleSpaceDown = useCallback(() => {
+    setIsPanMode(true);
+  }, []);
+
+  const handleSpaceUp = useCallback(() => {
+    setIsPanMode(false);
+  }, []);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    onToolChange: setActiveTool,
+    onEscape: handleEscape,
+    onSpaceDown: handleSpaceDown,
+    onSpaceUp: handleSpaceUp,
+  });
+
+  // Version management
   const handleCreateVersion = async (type: 'A' | 'B') => {
     if (!caseData) return;
     try {
@@ -118,10 +121,102 @@ export default function Workbench() {
         versions: [...prev.versions, version],
       } : null);
       setSelectedVersion(version);
-      toast.success(`Versão ${type} criada`);
+      
+      // Save current canvas state to the new version
+      const canvasState = canvasRef.current?.getCanvasState();
+      saveVersion(version.name);
+      
+      toast.success(`Versão ${type} criada com estado atual do canvas`);
     } catch (error) {
       toast.error('Erro ao criar versão');
     }
+  };
+
+  const handleDuplicateVersion = async (version: CaseVersion) => {
+    if (!caseData) return;
+    try {
+      const newVersion = await api.createVersion(
+        caseData.id, 
+        version.type as 'A' | 'B', 
+        `${version.description} (cópia)`
+      );
+      setCaseData(prev => prev ? {
+        ...prev,
+        versions: [...prev.versions, newVersion],
+      } : null);
+      setSelectedVersion(newVersion);
+      toast.success('Versão duplicada');
+    } catch (error) {
+      toast.error('Erro ao duplicar versão');
+    }
+  };
+
+  const handleRenameVersion = (version: CaseVersion, newName: string) => {
+    setCaseData(prev => prev ? {
+      ...prev,
+      versions: prev.versions.map(v => 
+        v.id === version.id ? { ...v, name: newName } : v
+      ),
+    } : null);
+  };
+
+  const handleDeleteVersion = (version: CaseVersion) => {
+    setCaseData(prev => prev ? {
+      ...prev,
+      versions: prev.versions.filter(v => v.id !== version.id),
+    } : null);
+    if (selectedVersion?.id === version.id) {
+      setSelectedVersion(caseData?.versions[0] || null);
+    }
+  };
+
+  const handleExport = () => {
+    const dataUrl = canvasRef.current?.exportImage();
+    if (dataUrl) {
+      const link = document.createElement('a');
+      link.download = `${caseData?.codename || 'simulation'}_${selectedVersion?.name || 'export'}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success('Imagem exportada');
+    }
+  };
+
+  const handleStartSimulation = () => {
+    if (!caseData || !selectedVersion) return;
+    
+    // Create fake processing job
+    const job: SimulationJob = {
+      id: `job_${Date.now()}`,
+      caseId: caseData.id,
+      versionId: selectedVersion.id,
+      status: 'processando',
+      progress: 0,
+      startedAt: new Date().toISOString(),
+      parameters: {
+        quality: 'qualidade',
+        preserveSymmetry: true,
+        avoidEyeDistortion: true,
+        maintainMouthLine: true,
+      },
+    };
+    
+    setProcessingJob(job);
+    
+    // Simulate progress
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += Math.random() * 15;
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(interval);
+        setProcessingJob(null);
+        toast.success('Simulação concluída!', {
+          description: 'O resultado foi aplicado à versão selecionada.',
+        });
+      } else {
+        setProcessingJob(prev => prev ? { ...prev, progress: Math.round(progress) } : null);
+      }
+    }, 800);
   };
 
   if (isLoading) {
@@ -129,11 +224,11 @@ export default function Workbench() {
       <div className="h-[calc(100vh-3.5rem)] flex">
         <div className="w-64 border-r border-border p-4 space-y-4">
           <Skeleton className="h-8 w-full" />
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
         </div>
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center bg-canvas-bg">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
         <div className="w-72 border-l border-border p-4 space-y-4">
@@ -166,15 +261,19 @@ export default function Workbench() {
           selectedVersion={selectedVersion}
           onSelectVersion={setSelectedVersion}
           onCreateVersion={handleCreateVersion}
+          onDuplicateVersion={handleDuplicateVersion}
+          onRenameVersion={handleRenameVersion}
+          onDeleteVersion={handleDeleteVersion}
+          onExport={handleExport}
         />
       </div>
 
-      {/* Center - Viewer */}
+      {/* Center - Canvas */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Breadcrumbs + View Mode */}
-        <div className="h-12 border-b border-border px-4 flex items-center justify-between bg-card">
+        {/* Header */}
+        <div className="h-12 border-b border-border px-4 flex items-center justify-between bg-card shrink-0">
           <div className="flex items-center gap-2 text-sm">
-            <Link to="/cases" className="text-muted-foreground hover:text-foreground">
+            <Link to="/cases" className="text-muted-foreground hover:text-foreground transition-colors">
               Casos
             </Link>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -210,19 +309,20 @@ export default function Workbench() {
                 disabled={versionsA.length === 0 && versionsB.length === 0}
               >
                 <GitCompare className="h-3.5 w-3.5" />
-                A/B
+                Comparar
               </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
 
-        {/* Viewer Area */}
-        <div className="flex-1 bg-canvas-bg">
+        {/* Canvas Area */}
+        <div className="flex-1 min-h-0">
           {viewMode === '2d' && (
-            <Canvas2D 
+            <SimulationCanvas
+              ref={canvasRef}
               imageUrl={imageUrl}
               activeTool={activeTool}
-              onAction={handleCanvasAction}
+              isPanMode={isPanMode}
             />
           )}
           {viewMode === '3d' && (
@@ -243,12 +343,12 @@ export default function Workbench() {
 
         {/* Processing Status Bar */}
         {processingJob && (
-          <div className="h-10 border-t border-border bg-warning/10 px-4 flex items-center gap-3">
+          <div className="h-10 border-t border-border bg-warning/10 px-4 flex items-center gap-3 shrink-0">
             <Loader2 className="h-4 w-4 text-warning animate-spin" />
             <span className="text-sm text-foreground">Processando simulação...</span>
             <div className="flex-1 max-w-xs h-1.5 bg-warning/20 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-warning rounded-full transition-all duration-500"
+                className="h-full bg-warning rounded-full transition-all duration-300"
                 style={{ width: `${processingJob.progress}%` }}
               />
             </div>
@@ -264,9 +364,11 @@ export default function Workbench() {
           onToolChange={setActiveTool}
           onUndo={handleUndo}
           onRedo={handleRedo}
-          canUndo={undoStack.length > 0}
-          canRedo={redoStack.length > 0}
+          onClear={handleClear}
+          canUndo={objects.length > 0}
+          canRedo={false}
           processingJob={processingJob}
+          onStartSimulation={handleStartSimulation}
         />
       </div>
     </div>
