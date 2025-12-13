@@ -48,8 +48,9 @@ import { useCanvasState } from '@/hooks/useCanvasState';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-import { type MeshDensity } from '@/types/facialLandmarks';
+import { type MeshDensity, type SymmetryResult } from '@/types/facialLandmarks';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
+import { SymmetryIndicator } from './SymmetryIndicator';
 
 export type ToolType = 'select' | 'warp' | 'volume' | 'incision' | 'suture' | 'annotate' | 'eraser';
 
@@ -75,6 +76,7 @@ interface ToolPanelProps {
   isConnecting: boolean;
   onCancelConnection: () => void;
   isAnalyzingFace: boolean;
+  symmetryResult: SymmetryResult | null;
 }
 
 const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
@@ -143,6 +145,7 @@ export function ToolPanel({
   isConnecting,
   onCancelConnection,
   isAnalyzingFace,
+  symmetryResult,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
   
@@ -444,7 +447,11 @@ export function ToolPanel({
           </div>
         </div>
 
-        {/* Tool-specific Parameters */}
+        {/* Symmetry Analysis */}
+        <SymmetryIndicator 
+          symmetryResult={symmetryResult} 
+          isAnalyzing={isAnalyzingFace} 
+        />
         <div className="p-3 border-b border-border">
           <div className="flex items-center gap-2 mb-3">
             <Sliders className="h-3.5 w-3.5 text-muted-foreground" />

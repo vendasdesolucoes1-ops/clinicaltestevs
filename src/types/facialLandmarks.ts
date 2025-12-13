@@ -127,3 +127,26 @@ export const POINT_LABELS: Record<string, string> = {
   temple_left: 'Têmpora E',
   temple_right: 'Têmpora D',
 };
+
+// Pares de pontos espelhados para análise de simetria
+export const MIRRORED_POINT_PAIRS: Array<{ left: string; right: string; label: string }> = [
+  { left: 'orbitale_left_inner', right: 'orbitale_right_inner', label: 'Cantos Int. Olhos' },
+  { left: 'orbitale_left_outer', right: 'orbitale_right_outer', label: 'Cantos Ext. Olhos' },
+  { left: 'cheilion_left', right: 'cheilion_right', label: 'Comissuras Labiais' },
+  { left: 'zygion_left', right: 'zygion_right', label: 'Zigomáticos' },
+  { left: 'gonion_left', right: 'gonion_right', label: 'Gônios' },
+  { left: 'temple_left', right: 'temple_right', label: 'Têmporas' },
+];
+
+// Interface para resultado de simetria
+export interface SymmetryResult {
+  overallScore: number; // 0-100, onde 100 é perfeitamente simétrico
+  pairs: Array<{
+    label: string;
+    leftPoint: string;
+    rightPoint: string;
+    deviation: number; // 0-100, onde 0 é perfeito
+    verticalDiff: number; // diferença vertical normalizada
+    horizontalDiff: number; // diferença horizontal (distância do eixo central)
+  }>;
+}
