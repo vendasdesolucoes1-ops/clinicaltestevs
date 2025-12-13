@@ -54,10 +54,14 @@ export default function Workbench() {
     setMeshDensity,
     meshEditMode,
     setMeshEditMode,
+    connectingFrom,
     analyzeImage,
     updatePoint,
     addPoint,
     removePoint,
+    addConnection,
+    startConnection,
+    cancelConnection,
     clearMesh,
   } = useFacialAnalysis();
 
@@ -372,9 +376,12 @@ export default function Workbench() {
               showMesh={showMesh}
               meshOpacity={meshOpacity}
               meshEditMode={meshEditMode}
+              connectingFrom={connectingFrom}
               onMeshPointMove={updatePoint}
               onMeshPointAdd={addPoint}
               onMeshPointRemove={removePoint}
+              onMeshStartConnection={startConnection}
+              onMeshAddConnection={addConnection}
             />
           )}
           
@@ -439,6 +446,8 @@ export default function Workbench() {
           onMeshDensityChange={setMeshDensity}
           meshEditMode={meshEditMode}
           onMeshEditModeChange={setMeshEditMode}
+          isConnecting={!!connectingFrom}
+          onCancelConnection={cancelConnection}
           isAnalyzingFace={isAnalyzing}
         />
       </div>
