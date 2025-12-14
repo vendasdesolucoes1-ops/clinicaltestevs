@@ -877,6 +877,8 @@ export default function Workbench() {
           isAnalyzingFace={isAnalyzing}
           symmetryResult={symmetryResult}
           onGetCanvasImage={() => canvasRef.current?.getCanvasDataUrl() ?? null}
+          caseName={caseData?.codename}
+          currentPhotoAngle={caseData?.photos.find(p => p.url === currentImageUrl)?.angle}
         />
         
         {/* Analysis History */}
