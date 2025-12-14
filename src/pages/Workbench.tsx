@@ -204,8 +204,8 @@ export default function Workbench() {
             });
             toast.info('Análise facial carregada');
           } else {
-            // Trigger new analysis
-            analyzeImage(frontPhoto.url);
+            // Trigger n8n analysis via webhook
+            triggerAnalysis(id, frontPhoto.url);
           }
         }
 
@@ -332,39 +332,14 @@ export default function Workbench() {
       // Update display URL to the public one
       setCurrentImageUrl(publicUrl);
 
-      // Trigger local analysis (more reliable than n8n for now)
-      const meshResult = await analyzeImage(publicUrl);
-
-      // Save analysis results to Supabase if successful
-      if (meshResult && photoRecord) {
-        const { error: analysisError } = await supabase
-          .from('facial_analyses')
-          .insert({
-            case_id: caseData.id,
-            photo_id: photoRecord.id,
-            points: meshResult.points as any,
-            face_roi: meshResult.faceROI as any,
-            midline_points: meshResult.midlinePoints,
-            connections: meshResult.connections as any,
-          });
-
-        if (analysisError) {
-          console.error('Erro ao salvar análise:', analysisError);
-        } else {
-          toast.success('Análise facial salva');
-        }
-      }
+      // Trigger n8n analysis via webhook
+      triggerAnalysis(caseData.id, publicUrl);
 
     } catch (error) {
       console.error('Erro no upload/análise:', error);
       toast.error('Erro ao processar imagem');
-      
-      // Fallback to local analysis with blob URL
-      const blobUrl = URL.createObjectURL(file);
-      setCurrentImageUrl(blobUrl);
-      await analyzeImage(blobUrl);
     }
-  }, [caseData, analyzeImage]);
+  }, [caseData, triggerAnalysis]);
 
   // Handlers
   const handleUndo = useCallback(() => {
