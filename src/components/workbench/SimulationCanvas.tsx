@@ -9,6 +9,7 @@ import { useCanvasState, Point, CanvasObject } from '@/hooks/useCanvasState';
 import { FacialMeshData } from '@/types/facialLandmarks';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface SimulationCanvasProps {
   imageUrl: string;
@@ -55,7 +56,118 @@ const TOOL_CURSORS: Record<ToolType, string> = {
   incision: 'crosshair',
   suture: 'crosshair',
   annotate: 'text',
-  eraser: 'pointer',
+  eraser: 'not-allowed',
+};
+
+// Helper to create suture points along a path
+const createSuturePoints = (
+  path: fabric.Path,
+  spacing: number,
+  color: string
+): fabric.Group => {
+  const pathInfo = path.path;
+  const points: fabric.Object[] = [];
+  
+  // Get path bounding box for estimation
+  const bounds = path.getBoundingRect();
+  const pathLength = Math.sqrt(bounds.width ** 2 + bounds.height ** 2);
+  const numPoints = Math.max(2, Math.floor(pathLength / spacing));
+  
+  // Create X marks along the path
+  for (let i = 0; i <= numPoints; i++) {
+    const t = i / numPoints;
+    const x = bounds.left + bounds.width * t;
+    const y = bounds.top + bounds.height * t;
+    
+    // Create X shape for suture
+    const line1 = new fabric.Line([x - 4, y - 4, x + 4, y + 4], {
+      stroke: color,
+      strokeWidth: 2,
+      selectable: false,
+    });
+    const line2 = new fabric.Line([x - 4, y + 4, x + 4, y - 4], {
+      stroke: color,
+      strokeWidth: 2,
+      selectable: false,
+    });
+    points.push(line1, line2);
+  }
+  
+  const group = new fabric.Group(points, {
+    selectable: true,
+    evented: true,
+  });
+  (group as any).toolType = 'suture';
+  (group as any).customName = 'suture_group';
+  
+  return group;
+};
+
+// Helper to create volume indicator
+const createVolumeIndicator = (
+  x: number,
+  y: number,
+  size: number,
+  mode: 'add' | 'remove'
+): fabric.Circle => {
+  const color = mode === 'add' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+  const strokeColor = mode === 'add' ? '#22c55e' : '#ef4444';
+  
+  const circle = new fabric.Circle({
+    left: x - size / 2,
+    top: y - size / 2,
+    radius: size / 2,
+    fill: color,
+    stroke: strokeColor,
+    strokeWidth: 2,
+    selectable: true,
+    evented: true,
+  });
+  (circle as any).toolType = 'volume';
+  (circle as any).volumeMode = mode;
+  (circle as any).customName = 'volume_indicator';
+  
+  return circle;
+};
+
+// Helper to create warp arrow
+const createWarpArrow = (
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number
+): fabric.Group => {
+  const angle = Math.atan2(endY - startY, endX - startX);
+  const arrowSize = 10;
+  
+  // Main line
+  const line = new fabric.Line([startX, startY, endX, endY], {
+    stroke: '#f59e0b',
+    strokeWidth: 3,
+    selectable: false,
+  });
+  
+  // Arrow head
+  const arrowHead = new fabric.Triangle({
+    left: endX,
+    top: endY,
+    width: arrowSize,
+    height: arrowSize * 1.5,
+    fill: '#f59e0b',
+    angle: (angle * 180 / Math.PI) + 90,
+    originX: 'center',
+    originY: 'center',
+    selectable: false,
+  });
+  
+  const group = new fabric.Group([line, arrowHead], {
+    selectable: true,
+    evented: true,
+  });
+  (group as any).toolType = 'warp';
+  (group as any).customName = 'warp_arrow';
+  
+  return group;
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
@@ -67,6 +179,9 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     const [isReady, setIsReady] = useState(false);
     const [cursorPosition, setCursorPosition] = useState<Point>({ x: 0, y: 0 });
     const [imageBounds, setImageBounds] = useState({ width: 0, height: 0, left: 0, top: 0 });
+    
+    // For warp tool - track drag start/end
+    const warpStartRef = useRef<Point | null>(null);
     
     const {
       zoom,
@@ -152,7 +267,6 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         
         (img as any).customName = 'backgroundImage';
         
-        // Salvar bounds da imagem para o mesh
         setImageBounds({
           width: imgWidth,
           height: imgHeight,
@@ -189,24 +303,31 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       });
     }, [imageUrl, isReady, layerOpacity.original]);
 
-    // Configure drawing mode
+    // Configure drawing mode based on active tool
     useEffect(() => {
       const canvas = fabricRef.current;
       if (!canvas) return;
 
-      canvas.isDrawingMode = ['warp', 'volume', 'incision', 'suture', 'annotate'].includes(activeTool);
+      // Only incision and suture use free drawing mode
+      const drawingTools = ['incision', 'suture'];
+      canvas.isDrawingMode = drawingTools.includes(activeTool);
       canvas.selection = activeTool === 'select';
       
       if (canvas.isDrawingMode && canvas.freeDrawingBrush) {
-        canvas.freeDrawingBrush.color = TOOL_COLORS[activeTool];
-        canvas.freeDrawingBrush.width = toolParams.brushSize;
+        if (activeTool === 'incision') {
+          canvas.freeDrawingBrush.color = '#ef4444';
+          canvas.freeDrawingBrush.width = Math.max(2, toolParams.incisionDepth / 2);
+        } else if (activeTool === 'suture') {
+          canvas.freeDrawingBrush.color = '#8b5cf6';
+          canvas.freeDrawingBrush.width = 2;
+        }
       }
       
       if (!isPanMode) {
         canvas.defaultCursor = TOOL_CURSORS[activeTool];
         canvas.hoverCursor = TOOL_CURSORS[activeTool];
       }
-    }, [activeTool, toolParams.brushSize, isPanMode]);
+    }, [activeTool, toolParams, isPanMode]);
 
     // Handle pan mode
     useEffect(() => {
@@ -221,38 +342,162 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       }
     }, [isPanMode]);
 
-    // Drawing events
+    // Tool-specific event handlers
     useEffect(() => {
       const canvas = fabricRef.current;
       if (!canvas) return;
 
+      // Handle path created for incision/suture
       const handlePathCreated = (e: any) => {
-        if (e.path) {
-          e.path.set({
-            stroke: TOOL_COLORS[activeTool],
-            strokeWidth: activeTool === 'incision' ? 3 : toolParams.brushSize / 5,
-            fill: 'transparent',
-            selectable: activeTool === 'select',
-            evented: true,
-          });
-          
-          (e.path as any).toolType = activeTool;
+        if (!e.path) return;
+        
+        if (activeTool === 'suture') {
+          // Convert path to suture points
+          const sutureGroup = createSuturePoints(
+            e.path,
+            toolParams.sutureSpacing,
+            '#8b5cf6'
+          );
+          canvas.remove(e.path);
+          canvas.add(sutureGroup);
+          canvas.renderAll();
           
           const canvasObj: CanvasObject = {
-            id: `obj_${Date.now()}`,
-            type: activeTool === 'warp' ? 'warp' : 
-                  activeTool === 'volume' ? 'volume' :
-                  activeTool === 'incision' ? 'incision' :
-                  activeTool === 'suture' ? 'suture' : 'path',
+            id: `suture_${Date.now()}`,
+            type: 'suture',
             points: [],
-            color: TOOL_COLORS[activeTool],
-            strokeWidth: toolParams.brushSize,
+            color: '#8b5cf6',
+            strokeWidth: 2,
             opacity: 1,
             layer: 'markings',
           };
-          
           addObject(canvasObj);
           onObjectAdded?.(canvasObj);
+          toast.success('Sutura adicionada');
+        } else if (activeTool === 'incision') {
+          // Style incision as dashed line
+          e.path.set({
+            stroke: '#ef4444',
+            strokeWidth: Math.max(2, toolParams.incisionDepth / 2),
+            strokeDashArray: [8, 4],
+            fill: 'transparent',
+            selectable: true,
+            evented: true,
+          });
+          (e.path as any).toolType = 'incision';
+          (e.path as any).customName = 'incision_line';
+          
+          const canvasObj: CanvasObject = {
+            id: `incision_${Date.now()}`,
+            type: 'incision',
+            points: [],
+            color: '#ef4444',
+            strokeWidth: toolParams.incisionDepth / 2,
+            opacity: 1,
+            layer: 'markings',
+          };
+          addObject(canvasObj);
+          onObjectAdded?.(canvasObj);
+          toast.success('Incisão marcada');
+        }
+      };
+
+      // Handle mouse events for other tools
+      const handleMouseDown = (e: any) => {
+        if (isPanMode) return;
+        
+        const pointer = canvas.getPointer(e.e);
+        
+        if (activeTool === 'eraser') {
+          const target = canvas.findTarget(e.e);
+          if (target && (target as any).customName !== 'backgroundImage') {
+            canvas.remove(target);
+            canvas.renderAll();
+            toast.success('Objeto removido');
+          }
+        } else if (activeTool === 'volume') {
+          const volumeIndicator = createVolumeIndicator(
+            pointer.x,
+            pointer.y,
+            toolParams.brushSize,
+            toolParams.volumeMode
+          );
+          canvas.add(volumeIndicator);
+          canvas.renderAll();
+          
+          const canvasObj: CanvasObject = {
+            id: `volume_${Date.now()}`,
+            type: 'volume',
+            points: [{ x: pointer.x, y: pointer.y }],
+            color: toolParams.volumeMode === 'add' ? '#22c55e' : '#ef4444',
+            strokeWidth: toolParams.brushSize,
+            opacity: 0.4,
+            layer: 'simulation',
+          };
+          addObject(canvasObj);
+          onObjectAdded?.(canvasObj);
+          toast.success(toolParams.volumeMode === 'add' ? 'Volume adicionado' : 'Volume removido');
+        } else if (activeTool === 'warp') {
+          warpStartRef.current = { x: pointer.x, y: pointer.y };
+        } else if (activeTool === 'annotate') {
+          const text = prompt('Digite sua anotação:');
+          if (text) {
+            const textObj = new fabric.IText(text, {
+              left: pointer.x,
+              top: pointer.y,
+              fontSize: toolParams.annotationFontSize,
+              fill: toolParams.annotationColor,
+              fontFamily: 'sans-serif',
+              selectable: true,
+              editable: true,
+            });
+            (textObj as any).toolType = 'annotate';
+            (textObj as any).customName = 'annotation_text';
+            canvas.add(textObj);
+            canvas.renderAll();
+            
+            const canvasObj: CanvasObject = {
+              id: `annotate_${Date.now()}`,
+              type: 'annotation',
+              points: [{ x: pointer.x, y: pointer.y }],
+              color: toolParams.annotationColor,
+              strokeWidth: 1,
+              opacity: 1,
+              layer: 'markings',
+            };
+            addObject(canvasObj);
+            onObjectAdded?.(canvasObj);
+            toast.success('Anotação adicionada');
+          }
+        }
+      };
+
+      const handleMouseUp = (e: any) => {
+        if (activeTool === 'warp' && warpStartRef.current) {
+          const pointer = canvas.getPointer(e.e);
+          const start = warpStartRef.current;
+          
+          // Only create arrow if there's significant movement
+          const distance = Math.sqrt((pointer.x - start.x) ** 2 + (pointer.y - start.y) ** 2);
+          if (distance > 10) {
+            const warpArrow = createWarpArrow(start.x, start.y, pointer.x, pointer.y);
+            canvas.add(warpArrow);
+            canvas.renderAll();
+            
+            const canvasObj: CanvasObject = {
+              id: `warp_${Date.now()}`,
+              type: 'warp',
+              points: [start, { x: pointer.x, y: pointer.y }],
+              color: '#f59e0b',
+              strokeWidth: 3,
+              opacity: 1,
+              layer: 'simulation',
+            };
+            addObject(canvasObj);
+            onObjectAdded?.(canvasObj);
+            toast.success('Vetor de tração adicionado');
+          }
+          warpStartRef.current = null;
         }
       };
 
@@ -262,13 +507,17 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       };
 
       canvas.on('path:created', handlePathCreated);
+      canvas.on('mouse:down', handleMouseDown);
+      canvas.on('mouse:up', handleMouseUp);
       canvas.on('mouse:move', handleMouseMove);
 
       return () => {
         canvas.off('path:created', handlePathCreated);
+        canvas.off('mouse:down', handleMouseDown);
+        canvas.off('mouse:up', handleMouseUp);
         canvas.off('mouse:move', handleMouseMove);
       };
-    }, [activeTool, toolParams, addObject, onObjectAdded]);
+    }, [activeTool, toolParams, addObject, onObjectAdded, isPanMode]);
 
     // Pan handling
     useEffect(() => {
@@ -363,10 +612,12 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           canvas.remove(objs[objs.length - 1]);
           canvas.renderAll();
           stateUndo();
+          toast.info('Ação desfeita');
         }
       },
       redo: () => {
         stateRedo();
+        toast.info('Ação refeita');
       },
       clear: () => {
         const canvas = fabricRef.current;
@@ -379,6 +630,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         );
         toRemove.forEach(obj => canvas.remove(obj));
         canvas.renderAll();
+        toast.success('Canvas limpo');
       },
       exportImage: () => {
         const canvas = fabricRef.current;
