@@ -868,6 +868,17 @@ export default function Workbench() {
             <AnalysisHistory 
               caseId={caseData.id} 
               onLoadAnalysis={loadExistingAnalysis}
+              onAnalysisDeleted={async () => {
+                // Refresh analyzed photo IDs after deletion
+                const { data: analysesData } = await supabase
+                  .from('facial_analyses')
+                  .select('photo_id')
+                  .eq('case_id', caseData.id);
+                
+                if (analysesData) {
+                  setAnalyzedPhotoIds(new Set(analysesData.map(a => a.photo_id)));
+                }
+              }}
             />
           </div>
         )}
