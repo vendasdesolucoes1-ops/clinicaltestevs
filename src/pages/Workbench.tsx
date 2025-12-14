@@ -22,7 +22,7 @@ import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
 import { useN8nFacialAnalysis } from '@/hooks/useN8nFacialAnalysis';
 import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
 import { supabase } from '@/integrations/supabase/client';
-import { api, mockCases, mockJobs, type ClinicalCase, type CaseVersion, type SimulationJob } from '@/lib/mockData';
+import { type ClinicalCase, type CaseVersion, type SimulationJob, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -87,35 +87,162 @@ export default function Workbench() {
   // Calcular análise de simetria
   const symmetryResult = useSymmetryAnalysis(meshData);
 
-  // Load case data
+  // Load case data from Supabase
   useEffect(() => {
     const loadCase = async () => {
+      if (!id) return;
+      
       setIsLoading(true);
       try {
-        const data = await api.getCase(id!);
-        if (data) {
-          setCaseData(data);
-          setSelectedVersion(data.versions[0] || null);
-          // Set initial image
-          if (data.photos.length > 0) {
-            setCurrentImageUrl(data.photos[0].url);
-          }
-          const job = mockJobs.find(j => j.caseId === id && j.status === 'processando');
-          setProcessingJob(job || null);
-        } else {
+        // Fetch case data
+        const { data: caseRow, error: caseError } = await supabase
+          .from('clinical_cases')
+          .select(`
+            id, codename, type, status, created_at, updated_at,
+            tags, notes, consent_registered, consent_date,
+            profiles:responsible_id(first_name, last_name)
+          `)
+          .eq('id', id)
+          .maybeSingle();
+
+        if (caseError || !caseRow) {
+          console.error('Erro ao carregar caso:', caseError);
           toast.error('Caso não encontrado');
           navigate('/cases');
+          return;
+        }
+
+        // Fetch photos
+        const { data: photosData } = await supabase
+          .from('case_photos')
+          .select('id, angle, url, storage_path, captured_at')
+          .eq('case_id', id)
+          .order('captured_at', { ascending: true });
+
+        // Fetch versions
+        const { data: versionsData } = await supabase
+          .from('case_versions')
+          .select('*')
+          .eq('case_id', id)
+          .order('created_at', { ascending: true });
+
+        // Fetch active simulation job
+        const { data: jobData } = await supabase
+          .from('simulation_jobs')
+          .select('*')
+          .eq('case_id', id)
+          .eq('status', 'processando')
+          .maybeSingle();
+
+        // Map photos to CasePhoto format
+        const photos: CasePhoto[] = (photosData || []).map(p => ({
+          id: p.id,
+          angle: p.angle as CasePhoto['angle'],
+          url: p.url,
+          capturedAt: p.captured_at,
+        }));
+
+        // Map versions to CaseVersion format
+        const versions: CaseVersion[] = (versionsData || []).map(v => ({
+          id: v.id,
+          name: v.name,
+          type: v.type as CaseVersion['type'],
+          subVersion: v.sub_version ?? undefined,
+          description: v.description || '',
+          status: v.status as CaseVersion['status'],
+          createdAt: v.created_at,
+          author: 'Autor', // TODO: fetch author name from profiles
+          thumbnailUrl: v.thumbnail_url ?? undefined,
+        }));
+
+        // Build responsible name
+        const profile = caseRow.profiles as { first_name: string | null; last_name: string | null } | null;
+        const responsibleName = profile 
+          ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Não atribuído'
+          : 'Não atribuído';
+
+        // Build ClinicalCase object
+        const clinicalCase: ClinicalCase = {
+          id: caseRow.id,
+          codename: caseRow.codename,
+          type: caseRow.type as ClinicalCase['type'],
+          status: caseRow.status as ClinicalCase['status'],
+          createdAt: caseRow.created_at,
+          updatedAt: caseRow.updated_at,
+          responsible: responsibleName,
+          tags: caseRow.tags || [],
+          notes: caseRow.notes || '',
+          consentRegistered: caseRow.consent_registered,
+          consentDate: caseRow.consent_date ?? undefined,
+          photos,
+          versions,
+        };
+
+        setCaseData(clinicalCase);
+        setSelectedVersion(versions[0] || null);
+
+        // Set initial image (prefer front photo)
+        if (photos.length > 0) {
+          const frontPhoto = photos.find(p => p.angle === 'frente') || photos[0];
+          setCurrentImageUrl(frontPhoto.url);
+        }
+
+        // Set processing job if exists
+        if (jobData) {
+          setProcessingJob({
+            id: jobData.id,
+            caseId: jobData.case_id,
+            versionId: jobData.version_id,
+            status: jobData.status as SimulationJob['status'],
+            progress: jobData.progress,
+            startedAt: jobData.started_at,
+            completedAt: jobData.completed_at ?? undefined,
+            parameters: (jobData.parameters as SimulationJob['parameters']) || {
+              quality: 'qualidade',
+              preserveSymmetry: true,
+              avoidEyeDistortion: true,
+              maintainMouthLine: true,
+            },
+          });
+        }
+
+        // Create base version if none exists
+        if (versions.length === 0) {
+          const { data: newVersion, error: versionError } = await supabase
+            .from('case_versions')
+            .insert({
+              case_id: id,
+              name: 'Original',
+              type: 'base',
+              description: 'Versão base - imagens originais',
+              status: 'pronto',
+            })
+            .select()
+            .single();
+
+          if (!versionError && newVersion) {
+            const baseVersion: CaseVersion = {
+              id: newVersion.id,
+              name: newVersion.name,
+              type: 'base',
+              description: newVersion.description || '',
+              status: 'pronto',
+              createdAt: newVersion.created_at,
+              author: responsibleName,
+            };
+            setCaseData(prev => prev ? { ...prev, versions: [baseVersion] } : null);
+            setSelectedVersion(baseVersion);
+          }
         }
       } catch (error) {
+        console.error('Erro ao carregar caso:', error);
         toast.error('Erro ao carregar caso');
       } finally {
         setIsLoading(false);
       }
     };
 
-    if (id) {
-      loadCase();
-    }
+    loadCase();
   }, [id, navigate]);
 
   // Handle adding a new photo - uploads to Supabase and triggers n8n analysis
@@ -224,7 +351,37 @@ export default function Workbench() {
   const handleCreateVersion = async (type: 'A' | 'B') => {
     if (!caseData) return;
     try {
-      const version = await api.createVersion(caseData.id, type, `Nova versão ${type}`);
+      // Count existing versions of this type for subversioning
+      const existingVersions = caseData.versions.filter(v => v.type === type);
+      const subVersion = existingVersions.length > 0 ? existingVersions.length + 1 : undefined;
+      const versionName = subVersion ? `Versão ${type}.${subVersion}` : `Versão ${type}`;
+
+      const { data: newVersion, error } = await supabase
+        .from('case_versions')
+        .insert({
+          case_id: caseData.id,
+          name: versionName,
+          type,
+          sub_version: subVersion,
+          description: `Nova versão ${type}`,
+          status: 'pronto',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const version: CaseVersion = {
+        id: newVersion.id,
+        name: newVersion.name,
+        type: newVersion.type as CaseVersion['type'],
+        subVersion: newVersion.sub_version ?? undefined,
+        description: newVersion.description || '',
+        status: 'pronto',
+        createdAt: newVersion.created_at,
+        author: caseData.responsible,
+      };
+
       setCaseData(prev => prev ? {
         ...prev,
         versions: [...prev.versions, version],
@@ -232,11 +389,11 @@ export default function Workbench() {
       setSelectedVersion(version);
       
       // Save current canvas state to the new version
-      const canvasState = canvasRef.current?.getCanvasState();
       saveVersion(version.name);
       
       toast.success(`Versão ${type} criada com estado atual do canvas`);
     } catch (error) {
+      console.error('Erro ao criar versão:', error);
       toast.error('Erro ao criar versão');
     }
   };
@@ -244,38 +401,89 @@ export default function Workbench() {
   const handleDuplicateVersion = async (version: CaseVersion) => {
     if (!caseData) return;
     try {
-      const newVersion = await api.createVersion(
-        caseData.id, 
-        version.type as 'A' | 'B', 
-        `${version.description} (cópia)`
-      );
+      const existingVersions = caseData.versions.filter(v => v.type === version.type);
+      const subVersion = existingVersions.length + 1;
+      const versionName = `Versão ${version.type}.${subVersion}`;
+
+      const { data: newVersion, error } = await supabase
+        .from('case_versions')
+        .insert({
+          case_id: caseData.id,
+          name: versionName,
+          type: version.type,
+          sub_version: subVersion,
+          description: `${version.description} (cópia)`,
+          status: 'pronto',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const duplicatedVersion: CaseVersion = {
+        id: newVersion.id,
+        name: newVersion.name,
+        type: newVersion.type as CaseVersion['type'],
+        subVersion: newVersion.sub_version ?? undefined,
+        description: newVersion.description || '',
+        status: 'pronto',
+        createdAt: newVersion.created_at,
+        author: caseData.responsible,
+      };
+
       setCaseData(prev => prev ? {
         ...prev,
-        versions: [...prev.versions, newVersion],
+        versions: [...prev.versions, duplicatedVersion],
       } : null);
-      setSelectedVersion(newVersion);
+      setSelectedVersion(duplicatedVersion);
       toast.success('Versão duplicada');
     } catch (error) {
+      console.error('Erro ao duplicar versão:', error);
       toast.error('Erro ao duplicar versão');
     }
   };
 
-  const handleRenameVersion = (version: CaseVersion, newName: string) => {
-    setCaseData(prev => prev ? {
-      ...prev,
-      versions: prev.versions.map(v => 
-        v.id === version.id ? { ...v, name: newName } : v
-      ),
-    } : null);
+  const handleRenameVersion = async (version: CaseVersion, newName: string) => {
+    try {
+      const { error } = await supabase
+        .from('case_versions')
+        .update({ name: newName })
+        .eq('id', version.id);
+
+      if (error) throw error;
+
+      setCaseData(prev => prev ? {
+        ...prev,
+        versions: prev.versions.map(v => 
+          v.id === version.id ? { ...v, name: newName } : v
+        ),
+      } : null);
+    } catch (error) {
+      console.error('Erro ao renomear versão:', error);
+      toast.error('Erro ao renomear versão');
+    }
   };
 
-  const handleDeleteVersion = (version: CaseVersion) => {
-    setCaseData(prev => prev ? {
-      ...prev,
-      versions: prev.versions.filter(v => v.id !== version.id),
-    } : null);
-    if (selectedVersion?.id === version.id) {
-      setSelectedVersion(caseData?.versions[0] || null);
+  const handleDeleteVersion = async (version: CaseVersion) => {
+    try {
+      const { error } = await supabase
+        .from('case_versions')
+        .delete()
+        .eq('id', version.id);
+
+      if (error) throw error;
+
+      setCaseData(prev => prev ? {
+        ...prev,
+        versions: prev.versions.filter(v => v.id !== version.id),
+      } : null);
+      if (selectedVersion?.id === version.id) {
+        setSelectedVersion(caseData?.versions[0] || null);
+      }
+      toast.success('Versão removida');
+    } catch (error) {
+      console.error('Erro ao deletar versão:', error);
+      toast.error('Erro ao remover versão');
     }
   };
 
