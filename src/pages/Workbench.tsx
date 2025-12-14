@@ -7,10 +7,18 @@ import {
   GitCompare,
   ChevronRight,
   Loader2,
-  Scan
+  Scan,
+  Image
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VersionPanel } from '@/components/workbench/VersionPanel';
 import { ToolPanel, type ToolType } from '@/components/workbench/ToolPanel';
@@ -646,6 +654,29 @@ export default function Workbench() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Photo Selector */}
+            {caseData.photos.length > 0 && (
+              <Select
+                value={currentImageUrl}
+                onValueChange={(url) => setCurrentImageUrl(url)}
+              >
+                <SelectTrigger className="w-[180px] h-8 text-xs">
+                  <Image className="h-3.5 w-3.5 mr-2" />
+                  <SelectValue placeholder="Selecionar foto" />
+                </SelectTrigger>
+                <SelectContent className="z-50">
+                  {caseData.photos.map((photo) => (
+                    <SelectItem key={photo.id} value={photo.url} className="text-xs">
+                      {photo.angle === 'frente' ? 'Frente' :
+                       photo.angle === 'perfil_d' ? 'Perfil Direito' :
+                       photo.angle === 'perfil_e' ? 'Perfil Esquerdo' :
+                       photo.angle === 'tres_quartos' ? '3/4' : photo.angle}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
             {/* Gerar Análise Facial Button */}
             <Button
               variant="default"
