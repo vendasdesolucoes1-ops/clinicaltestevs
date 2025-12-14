@@ -26,6 +26,12 @@ interface UseFacialAnalysisReturn {
   setMeshEditMode: (mode: MeshEditMode) => void;
   connectingFrom: string | null;
   analyzeImage: (imageUrl: string) => Promise<FacialMeshData | null>;
+  loadExistingAnalysis: (data: {
+    points: FacialPoint[];
+    faceROI?: FaceROI;
+    midlinePoints?: string[];
+    customConnections?: FacialConnection[];
+  }) => void;
   updatePoint: (pointId: string, x: number, y: number) => void;
   addPoint: (x: number, y: number, region?: AnatomicalRegion) => void;
   removePoint: (pointId: string) => void;
@@ -285,6 +291,19 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     setConnectingFrom(null);
   }, []);
 
+  // Load existing analysis from Supabase
+  const loadExistingAnalysis = useCallback((data: {
+    points: FacialPoint[];
+    faceROI?: FaceROI;
+    midlinePoints?: string[];
+    customConnections?: FacialConnection[];
+  }) => {
+    setPoints(data.points);
+    if (data.faceROI) setFaceROI(data.faceROI);
+    if (data.midlinePoints) setMidlinePoints(data.midlinePoints);
+    if (data.customConnections) setCustomConnections(data.customConnections);
+  }, []);
+
   return {
     isAnalyzing,
     meshData,
@@ -296,6 +315,7 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     setMeshEditMode,
     connectingFrom,
     analyzeImage,
+    loadExistingAnalysis,
     updatePoint,
     addPoint,
     removePoint,
