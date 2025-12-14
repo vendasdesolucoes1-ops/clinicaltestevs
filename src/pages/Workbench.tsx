@@ -33,6 +33,7 @@ import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
 import { useN8nFacialAnalysis } from '@/hooks/useN8nFacialAnalysis';
 import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
+import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
 import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type SimulationJob, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
@@ -53,6 +54,7 @@ export default function Workbench() {
   const [isPanMode, setIsPanMode] = useState(false);
   const [processingJob, setProcessingJob] = useState<SimulationJob | null>(null);
   const [currentImageUrl, setCurrentImageUrl] = useState<string>('/placeholder.svg');
+  const [currentPhotoId, setCurrentPhotoId] = useState<string | undefined>(undefined);
   const [showMesh, setShowMesh] = useState(true);
   const [meshOpacity, setMeshOpacity] = useState(80);
   const [analyzedPhotoIds, setAnalyzedPhotoIds] = useState<Set<string>>(new Set());
@@ -100,6 +102,15 @@ export default function Workbench() {
 
   // Calcular análise de simetria
   const symmetryResult = useSymmetryAnalysis(meshData);
+
+  // Auto-save mesh edits to database
+  useMeshAutoSave({
+    caseId: caseData?.id,
+    photoId: currentPhotoId,
+    meshData,
+    debounceMs: 2000,
+    enabled: !!meshData && !!currentPhotoId,
+  });
 
   // Load case data from Supabase
   useEffect(() => {
@@ -209,6 +220,7 @@ export default function Workbench() {
         if (photos.length > 0) {
           const frontPhoto = photos.find(p => p.angle === 'frente') || photos[0];
           setCurrentImageUrl(frontPhoto.url);
+          setCurrentPhotoId(frontPhoto.id);
 
           // Check for existing facial analysis for front photo
           const { data: existingAnalysis } = await supabase
@@ -675,24 +687,29 @@ export default function Workbench() {
                   setCurrentImageUrl(url);
                   clearMesh(); // Clear existing mesh when switching photos
                   
-                  // Find the selected photo and check for existing analysis
+                  // Find the selected photo and update photoId
                   const selectedPhoto = caseData.photos.find(p => p.url === url);
-                  if (selectedPhoto && analyzedPhotoIds.has(selectedPhoto.id)) {
-                    // Load existing analysis for this photo
-                    const { data: existingAnalysis } = await supabase
-                      .from('facial_analyses')
-                      .select('*')
-                      .eq('photo_id', selectedPhoto.id)
-                      .maybeSingle();
+                  if (selectedPhoto) {
+                    setCurrentPhotoId(selectedPhoto.id);
                     
-                    if (existingAnalysis && existingAnalysis.points) {
-                      loadExistingAnalysis({
-                        points: existingAnalysis.points as any,
-                        faceROI: existingAnalysis.face_roi as any,
-                        midlinePoints: existingAnalysis.midline_points || [],
-                        customConnections: existingAnalysis.custom_connections as any,
-                      });
-                      toast.info('Análise facial carregada');
+                    // Check for existing analysis
+                    if (analyzedPhotoIds.has(selectedPhoto.id)) {
+                      // Load existing analysis for this photo
+                      const { data: existingAnalysis } = await supabase
+                        .from('facial_analyses')
+                        .select('*')
+                        .eq('photo_id', selectedPhoto.id)
+                        .maybeSingle();
+                      
+                      if (existingAnalysis && existingAnalysis.points) {
+                        loadExistingAnalysis({
+                          points: existingAnalysis.points as any,
+                          faceROI: existingAnalysis.face_roi as any,
+                          midlinePoints: existingAnalysis.midline_points || [],
+                          customConnections: existingAnalysis.custom_connections as any,
+                        });
+                        toast.info('Análise facial carregada');
+                      }
                     }
                   }
                 }}
