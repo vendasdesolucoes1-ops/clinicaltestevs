@@ -179,6 +179,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     const [isReady, setIsReady] = useState(false);
     const [cursorPosition, setCursorPosition] = useState<Point>({ x: 0, y: 0 });
     const [imageBounds, setImageBounds] = useState({ width: 0, height: 0, left: 0, top: 0 });
+    const [isMouseOverCanvas, setIsMouseOverCanvas] = useState(false);
     
     // For warp tool - track drag start/end
     const warpStartRef = useRef<Point | null>(null);
@@ -506,16 +507,23 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         setCursorPosition({ x: pointer.x, y: pointer.y });
       };
 
+      const handleMouseOver = () => setIsMouseOverCanvas(true);
+      const handleMouseOut = () => setIsMouseOverCanvas(false);
+
       canvas.on('path:created', handlePathCreated);
       canvas.on('mouse:down', handleMouseDown);
       canvas.on('mouse:up', handleMouseUp);
       canvas.on('mouse:move', handleMouseMove);
+      canvas.on('mouse:over', handleMouseOver);
+      canvas.on('mouse:out', handleMouseOut);
 
       return () => {
         canvas.off('path:created', handlePathCreated);
         canvas.off('mouse:down', handleMouseDown);
         canvas.off('mouse:up', handleMouseUp);
         canvas.off('mouse:move', handleMouseMove);
+        canvas.off('mouse:over', handleMouseOver);
+        canvas.off('mouse:out', handleMouseOut);
       };
     }, [activeTool, toolParams, addObject, onObjectAdded, isPanMode]);
 
@@ -675,6 +683,13 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       setPan({ x: 0, y: 0 });
     };
 
+    // Determine if cursor preview should be shown
+    const showCursorPreview = isMouseOverCanvas && !isPanMode && ['volume', 'eraser', 'incision', 'suture'].includes(activeTool);
+    const cursorSize = activeTool === 'volume' ? toolParams.brushSize : 
+                       activeTool === 'incision' ? Math.max(8, toolParams.incisionDepth / 2) : 
+                       activeTool === 'suture' ? 16 : 20;
+    const cursorColor = TOOL_COLORS[activeTool] || '#0ea5e9';
+
     return (
       <div 
         ref={containerRef} 
@@ -682,8 +697,25 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           "relative h-full w-full overflow-hidden bg-canvas-bg",
           isPanMode && "cursor-grab"
         )}
+        onMouseEnter={() => setIsMouseOverCanvas(true)}
+        onMouseLeave={() => setIsMouseOverCanvas(false)}
       >
         <canvas ref={canvasRef} />
+
+        {/* Cursor Size Preview */}
+        {showCursorPreview && (
+          <div
+            className="pointer-events-none absolute rounded-full border-2 transition-all duration-75"
+            style={{
+              width: cursorSize * zoom,
+              height: cursorSize * zoom,
+              left: cursorPosition.x * zoom + (fabricRef.current?.viewportTransform?.[4] || 0) - (cursorSize * zoom) / 2,
+              top: cursorPosition.y * zoom + (fabricRef.current?.viewportTransform?.[5] || 0) - (cursorSize * zoom) / 2,
+              borderColor: cursorColor,
+              backgroundColor: `${cursorColor}20`,
+            }}
+          />
+        )}
 
         {/* Facial Mesh Overlay */}
         <FacialMesh
