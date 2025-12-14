@@ -61,6 +61,13 @@ export default function CaseForm() {
     tres_quartos: null,
   });
 
+  const [existingPhotos, setExistingPhotos] = useState<Record<PhotoAngle, string | null>>({
+    frente: null,
+    perfil_d: null,
+    perfil_e: null,
+    tres_quartos: null,
+  });
+
   const [tagInput, setTagInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -80,6 +87,7 @@ export default function CaseForm() {
   useEffect(() => {
     if (isEditing && id) {
       const loadCase = async () => {
+        // Load case data
         const { data: caseData } = await supabase
           .from('clinical_cases')
           .select('*')
@@ -94,6 +102,25 @@ export default function CaseForm() {
             tags: caseData.tags || [],
             consentRegistered: caseData.consent_registered,
           });
+        }
+
+        // Load existing photos
+        const { data: photosData } = await supabase
+          .from('case_photos')
+          .select('angle, url')
+          .eq('case_id', id);
+
+        if (photosData && photosData.length > 0) {
+          const photoMap: Record<PhotoAngle, string | null> = {
+            frente: null,
+            perfil_d: null,
+            perfil_e: null,
+            tres_quartos: null,
+          };
+          photosData.forEach(photo => {
+            photoMap[photo.angle] = photo.url;
+          });
+          setExistingPhotos(photoMap);
         }
       };
       loadCase();
@@ -157,8 +184,8 @@ export default function CaseForm() {
       return;
     }
 
-    const missingPhotos = REQUIRED_ANGLES.filter(angle => !photos[angle]);
-    if (missingPhotos.length > 0 && !isEditing) {
+    const missingPhotos = REQUIRED_ANGLES.filter(angle => !photos[angle] && !existingPhotos[angle]);
+    if (missingPhotos.length > 0) {
       toast.error(`Fotos obrigatórias faltando: ${missingPhotos.map(a => ANGLE_LABELS[a]).join(', ')}`);
       return;
     }
@@ -256,7 +283,7 @@ export default function CaseForm() {
     }
   };
 
-  const uploadedCount = Object.values(photos).filter(Boolean).length;
+  const uploadedCount = REQUIRED_ANGLES.filter(angle => photos[angle] || existingPhotos[angle]).length;
   const requiredCount = REQUIRED_ANGLES.length;
 
   return (
@@ -404,6 +431,7 @@ export default function CaseForm() {
                   angle={angle}
                   label={ANGLE_LABELS[angle]}
                   file={photos[angle]}
+                  existingUrl={existingPhotos[angle]}
                   required={REQUIRED_ANGLES.includes(angle)}
                   onUpload={(file) => handlePhotoUpload(angle, file)}
                 />
@@ -447,12 +475,14 @@ function PhotoUploadSlot({
   angle, 
   label, 
   file, 
+  existingUrl,
   required,
   onUpload 
 }: { 
   angle: PhotoAngle;
   label: string;
   file: File | null;
+  existingUrl: string | null;
   required: boolean;
   onUpload: (file: File) => void;
 }) {
@@ -463,6 +493,9 @@ function PhotoUploadSlot({
     }
   };
 
+  const previewUrl = file ? URL.createObjectURL(file) : existingUrl;
+  const hasPhoto = file || existingUrl;
+
   return (
     <div className="space-y-2">
       <Label className="text-xs flex items-center gap-1">
@@ -472,7 +505,7 @@ function PhotoUploadSlot({
       <label
         className={cn(
           "flex flex-col items-center justify-center h-32 rounded-lg border-2 border-dashed cursor-pointer transition-colors",
-          file 
+          hasPhoto 
             ? "border-success/50 bg-success/5" 
             : "border-border hover:border-primary/50 hover:bg-primary/5"
         )}
@@ -483,10 +516,10 @@ function PhotoUploadSlot({
           onChange={handleChange}
           className="hidden"
         />
-        {file ? (
+        {previewUrl ? (
           <div className="relative w-full h-full">
             <img
-              src={URL.createObjectURL(file)}
+              src={previewUrl}
               alt={label}
               className="w-full h-full object-cover rounded-lg"
             />
