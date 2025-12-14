@@ -228,15 +228,23 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          job_id: jobId,
           case_id: caseId,
           image_url: imageUrl,
-          job_id: jobId,
-          callback_url: 'https://kekxxyqkrlmajkndwboj.supabase.co/functions/v1/webhook-n8n-notification',
+          mode: "clinical",
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Erro ao disparar webhook: ${response.status}`);
+        setAnalysisJob(prev => prev ? {
+          ...prev,
+          status: 'failed',
+          errorMessage: `Falha de processamento: ${response.status}`,
+        } : null);
+        toast.error('Falha de processamento', {
+          description: 'Não foi possível iniciar a análise facial.'
+        });
+        return;
       }
 
       // Start polling for status

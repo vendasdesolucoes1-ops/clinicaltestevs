@@ -288,8 +288,6 @@ export default function Workbench() {
       if (uploadError) {
         console.error('Erro ao fazer upload:', uploadError);
         toast.error('Erro ao fazer upload da imagem');
-        // Fallback to local analysis
-        await analyzeImage(blobUrl);
         return;
       }
 
