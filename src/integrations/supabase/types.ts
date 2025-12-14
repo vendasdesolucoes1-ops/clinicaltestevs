@@ -325,6 +325,39 @@ export type Database = {
           },
         ]
       }
+      facial_analysis_jobs: {
+        Row: {
+          case_id: string
+          error_message: string | null
+          error_stage: string | null
+          image_url: string
+          job_id: string
+          status: Database["public"]["Enums"]["job_status"]
+          timestamp_end: string | null
+          timestamp_start: string | null
+        }
+        Insert: {
+          case_id: string
+          error_message?: string | null
+          error_stage?: string | null
+          image_url: string
+          job_id: string
+          status: Database["public"]["Enums"]["job_status"]
+          timestamp_end?: string | null
+          timestamp_start?: string | null
+        }
+        Update: {
+          case_id?: string
+          error_message?: string | null
+          error_stage?: string | null
+          image_url?: string
+          job_id?: string
+          status?: Database["public"]["Enums"]["job_status"]
+          timestamp_end?: string | null
+          timestamp_start?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -449,6 +482,7 @@ export type Database = {
       case_status: "ativo" | "arquivado" | "em_processamento"
       case_type: "queimadura" | "trauma"
       export_format: "png" | "jpg" | "pdf"
+      job_status: "pending" | "processing" | "failed" | "success"
       photo_angle: "frente" | "perfil_d" | "perfil_e" | "tres_quartos"
       simulation_status: "processando" | "pronto" | "falhou"
       version_type: "base" | "A" | "B"
@@ -583,6 +617,7 @@ export const Constants = {
       case_status: ["ativo", "arquivado", "em_processamento"],
       case_type: ["queimadura", "trauma"],
       export_format: ["png", "jpg", "pdf"],
+      job_status: ["pending", "processing", "failed", "success"],
       photo_angle: ["frente", "perfil_d", "perfil_e", "tres_quartos"],
       simulation_status: ["processando", "pronto", "falhou"],
       version_type: ["base", "A", "B"],

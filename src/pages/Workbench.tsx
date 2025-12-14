@@ -15,10 +15,13 @@ import { ToolPanel, type ToolType } from '@/components/workbench/ToolPanel';
 import { SimulationCanvas, SimulationCanvasRef } from '@/components/workbench/SimulationCanvas';
 import { Viewer3D } from '@/components/workbench/Viewer3D';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
+import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
+import { useN8nFacialAnalysis } from '@/hooks/useN8nFacialAnalysis';
 import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
+import { supabase } from '@/integrations/supabase/client';
 import { api, mockCases, mockJobs, type ClinicalCase, type CaseVersion, type SimulationJob } from '@/lib/mockData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -48,9 +51,10 @@ export default function Workbench() {
     saveVersion,
   } = useCanvasState();
 
+  // Local facial analysis (for manual/fallback use)
   const {
-    isAnalyzing,
-    meshData,
+    isAnalyzing: isLocalAnalyzing,
+    meshData: localMeshData,
     meshDensity,
     setMeshDensity,
     meshEditMode,
@@ -66,6 +70,19 @@ export default function Workbench() {
     cancelConnection,
     clearMesh,
   } = useFacialAnalysis();
+
+  // n8n async facial analysis
+  const {
+    analysisJob,
+    isProcessing: isN8nProcessing,
+    meshData: n8nMeshData,
+    triggerAnalysis,
+    retryAnalysis,
+  } = useN8nFacialAnalysis();
+
+  // Use n8n mesh data if available, otherwise use local
+  const meshData = n8nMeshData || localMeshData;
+  const isAnalyzing = isLocalAnalyzing || isN8nProcessing;
 
   // Calcular análise de simetria
   const symmetryResult = useSymmetryAnalysis(meshData);
@@ -101,28 +118,66 @@ export default function Workbench() {
     }
   }, [id, navigate]);
 
-  // Handle adding a new photo - automatically triggers facial analysis
+  // Handle adding a new photo - uploads to Supabase and triggers n8n analysis
   const handleAddPhoto = useCallback(async (file: File) => {
-    const url = URL.createObjectURL(file);
-    setCurrentImageUrl(url);
-    
-    // Also add to case data
-    if (caseData) {
+    if (!caseData) return;
+
+    try {
+      // Create blob URL for immediate preview
+      const blobUrl = URL.createObjectURL(file);
+      setCurrentImageUrl(blobUrl);
+
+      // Generate unique file path
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${caseData.id}/${Date.now()}.${fileExt}`;
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('case-photos')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) {
+        console.error('Erro ao fazer upload:', uploadError);
+        toast.error('Erro ao fazer upload da imagem');
+        // Fallback to local analysis
+        await analyzeImage(blobUrl);
+        return;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('case-photos')
+        .getPublicUrl(fileName);
+
+      // Update case data with new photo
       const newPhoto = {
         id: `ph_${Date.now()}`,
         angle: 'frente' as const,
-        url: url,
+        url: publicUrl,
         capturedAt: new Date().toISOString(),
       };
+      
       setCaseData(prev => prev ? {
         ...prev,
         photos: [...prev.photos, newPhoto],
       } : null);
-    }
 
-    // Automatically analyze facial landmarks
-    await analyzeImage(url);
-  }, [caseData, analyzeImage]);
+      // Update display URL to the public one
+      setCurrentImageUrl(publicUrl);
+
+      // Trigger n8n async analysis
+      await triggerAnalysis(caseData.id, publicUrl);
+
+    } catch (error) {
+      console.error('Erro no upload/análise:', error);
+      toast.error('Erro ao processar imagem');
+      
+      // Fallback to local analysis with blob URL
+      const blobUrl = URL.createObjectURL(file);
+      setCurrentImageUrl(blobUrl);
+      await analyzeImage(blobUrl);
+    }
+  }, [caseData, triggerAnalysis, analyzeImage]);
 
   // Handlers
   const handleUndo = useCallback(() => {
@@ -416,6 +471,14 @@ export default function Workbench() {
             />
           )}
         </div>
+
+        {/* n8n Analysis Status Bar */}
+        {analysisJob && (
+          <AnalysisStatusBar 
+            status={analysisJob.status} 
+            onRetry={retryAnalysis}
+          />
+        )}
 
         {/* Processing Status Bar */}
         {processingJob && (
