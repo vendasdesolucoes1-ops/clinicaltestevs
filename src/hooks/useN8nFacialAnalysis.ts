@@ -205,6 +205,22 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
         description: 'O processamento será feito em segundo plano.'
       });
 
+      // Insert job record in database for polling
+      const { error: insertError } = await supabase
+        .from('facial_analysis_jobs')
+        .insert({
+          job_id: jobId,
+          case_id: caseId,
+          image_url: imageUrl,
+          status: 'processing',
+          timestamp_start: new Date().toISOString(),
+        });
+
+      if (insertError) {
+        console.error('Erro ao criar job no banco:', insertError);
+        // Continue anyway - n8n callback will create if needed
+      }
+
       // Send POST to n8n webhook
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: 'POST',
@@ -215,6 +231,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
           case_id: caseId,
           image_url: imageUrl,
           job_id: jobId,
+          callback_url: 'https://kekxxyqkrlmajkndwboj.supabase.co/functions/v1/webhook-n8n-notification',
         }),
       });
 
