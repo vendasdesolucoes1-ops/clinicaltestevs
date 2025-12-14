@@ -35,7 +35,7 @@ import { useN8nFacialAnalysis } from '@/hooks/useN8nFacialAnalysis';
 import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
 import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
 import { supabase } from '@/integrations/supabase/client';
-import { type ClinicalCase, type CaseVersion, type SimulationJob, type CasePhoto } from '@/lib/mockData';
+import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -52,7 +52,6 @@ export default function Workbench() {
   const [viewMode, setViewMode] = useState<ViewMode>('2d');
   const [activeTool, setActiveTool] = useState<ToolType>('select');
   const [isPanMode, setIsPanMode] = useState(false);
-  const [processingJob, setProcessingJob] = useState<SimulationJob | null>(null);
   const [currentImageUrl, setCurrentImageUrl] = useState<string>('/placeholder.svg');
   const [currentPhotoId, setCurrentPhotoId] = useState<string | undefined>(undefined);
   const [showMesh, setShowMesh] = useState(true);
@@ -93,7 +92,10 @@ export default function Workbench() {
     isProcessing: isN8nProcessing,
     meshData: n8nMeshData,
     triggerAnalysis,
+    triggerSimulation,
     retryAnalysis,
+    createdVersion,
+    clearCreatedVersion,
   } = useN8nFacialAnalysis();
 
   // Use n8n mesh data if available, otherwise use local
@@ -242,24 +244,7 @@ export default function Workbench() {
           // No automatic analysis trigger - user must click "Gerar Análise Facial" button
         }
 
-        // Set processing job if exists
-        if (jobData) {
-          setProcessingJob({
-            id: jobData.id,
-            caseId: jobData.case_id,
-            versionId: jobData.version_id,
-            status: jobData.status as SimulationJob['status'],
-            progress: jobData.progress,
-            startedAt: jobData.started_at,
-            completedAt: jobData.completed_at ?? undefined,
-            parameters: (jobData.parameters as SimulationJob['parameters']) || {
-              quality: 'qualidade',
-              preserveSymmetry: true,
-              avoidEyeDistortion: true,
-              maintainMouthLine: true,
-            },
-          });
-        }
+        // Note: processing jobs are now handled via n8n polling, no need to set here
 
         // Create base version if none exists
         if (versions.length === 0) {
@@ -566,43 +551,55 @@ export default function Workbench() {
     }
   };
 
-  const handleStartSimulation = () => {
-    if (!caseData || !selectedVersion) return;
+  // Trigger real n8n simulation
+  const handleTriggerSimulation = useCallback(async (targetVersion: 'A' | 'B') => {
+    if (!caseData || !currentImageUrl || currentImageUrl === '/placeholder.svg') {
+      toast.error('Selecione uma foto antes de rodar a simulação');
+      return;
+    }
     
-    // Create fake processing job
-    const job: SimulationJob = {
-      id: `job_${Date.now()}`,
-      caseId: caseData.id,
-      versionId: selectedVersion.id,
-      status: 'processando',
-      progress: 0,
-      startedAt: new Date().toISOString(),
-      parameters: {
-        quality: 'qualidade',
-        preserveSymmetry: true,
-        avoidEyeDistortion: true,
-        maintainMouthLine: true,
-      },
-    };
-    
-    setProcessingJob(job);
-    
-    // Simulate progress
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 15;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        setProcessingJob(null);
-        toast.success('Simulação concluída!', {
-          description: 'O resultado foi aplicado à versão selecionada.',
-        });
-      } else {
-        setProcessingJob(prev => prev ? { ...prev, progress: Math.round(progress) } : null);
-      }
-    }, 800);
-  };
+    await triggerSimulation(caseData.id, currentImageUrl, targetVersion);
+  }, [caseData, currentImageUrl, triggerSimulation]);
+
+  // Handle created version from simulation
+  useEffect(() => {
+    if (createdVersion && caseData) {
+      // Refresh versions list to include the new one
+      const refreshVersions = async () => {
+        const { data: versionsData } = await supabase
+          .from('case_versions')
+          .select('*')
+          .eq('case_id', caseData.id)
+          .order('created_at', { ascending: true });
+        
+        if (versionsData) {
+          const versions: CaseVersion[] = versionsData.map(v => ({
+            id: v.id,
+            name: v.name,
+            type: v.type as CaseVersion['type'],
+            subVersion: v.sub_version ?? undefined,
+            description: v.description || '',
+            status: v.status as CaseVersion['status'],
+            createdAt: v.created_at,
+            author: 'Autor',
+            thumbnailUrl: v.thumbnail_url ?? undefined,
+          }));
+          
+          setCaseData(prev => prev ? { ...prev, versions } : null);
+          
+          // Auto-select the newly created version
+          const newVersion = versions.find(v => v.id === createdVersion.id);
+          if (newVersion) {
+            setSelectedVersion(newVersion);
+          }
+        }
+        
+        clearCreatedVersion();
+      };
+      
+      refreshVersions();
+    }
+  }, [createdVersion, caseData, clearCreatedVersion]);
 
   if (isLoading) {
     return (
@@ -815,7 +812,7 @@ export default function Workbench() {
             <Viewer3D 
               modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
               imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
-              isProcessing={processingJob?.versionId === selectedVersion?.id}
+              isProcessing={isN8nProcessing}
             />
           )}
           {viewMode === 'compare' && (
@@ -836,20 +833,7 @@ export default function Workbench() {
           />
         )}
 
-        {/* Processing Status Bar */}
-        {processingJob && (
-          <div className="h-10 border-t border-border bg-warning/10 px-4 flex items-center gap-3 shrink-0">
-            <Loader2 className="h-4 w-4 text-warning animate-spin" />
-            <span className="text-sm text-foreground">Processando simulação...</span>
-            <div className="flex-1 max-w-xs h-1.5 bg-warning/20 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-warning rounded-full transition-all duration-300"
-                style={{ width: `${processingJob.progress}%` }}
-              />
-            </div>
-            <span className="text-xs font-mono text-warning">{processingJob.progress}%</span>
-          </div>
-        )}
+        {/* Processing indicator now shown via ToolPanel and AnalysisStatusBar */}
       </div>
 
       {/* Right Panel - Tools */}
@@ -862,8 +846,8 @@ export default function Workbench() {
           onClear={handleClear}
           canUndo={objects.length > 0}
           canRedo={false}
-          processingJob={processingJob}
-          onStartSimulation={handleStartSimulation}
+          isSimulating={isN8nProcessing}
+          onTriggerSimulation={handleTriggerSimulation}
           showMesh={showMesh}
           onShowMeshChange={setShowMesh}
           meshOpacity={meshOpacity}

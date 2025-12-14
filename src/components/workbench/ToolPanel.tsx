@@ -43,10 +43,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { type SimulationJob } from '@/lib/mockData';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 
 import { type MeshDensity, type SymmetryResult } from '@/types/facialLandmarks';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
@@ -62,8 +60,9 @@ interface ToolPanelProps {
   onClear: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  processingJob: SimulationJob | null;
-  onStartSimulation: () => void;
+  // Simulation via n8n
+  isSimulating: boolean;
+  onTriggerSimulation: (targetVersion: 'A' | 'B') => void;
   // Mesh controls
   showMesh: boolean;
   onShowMeshChange: (show: boolean) => void;
@@ -119,14 +118,6 @@ const INSTRUMENTS = [
   { value: 'eletrico', label: 'Elétrico' },
 ];
 
-const SIMULATION_STEPS = [
-  'Preparando dados...',
-  'Analisando geometria facial...',
-  'Aplicando parâmetros de simulação...',
-  'Calculando deformação tecidual...',
-  'Renderizando resultado...',
-];
-
 export function ToolPanel({ 
   activeTool, 
   onToolChange, 
@@ -135,8 +126,8 @@ export function ToolPanel({
   onClear,
   canUndo,
   canRedo,
-  processingJob,
-  onStartSimulation,
+  isSimulating,
+  onTriggerSimulation,
   showMesh,
   onShowMeshChange,
   meshOpacity,
@@ -164,23 +155,9 @@ export function ToolPanel({
     targetVersion: 'A' as 'A' | 'B',
   });
 
-  const [simulationStep, setSimulationStep] = useState(0);
-
   const handleRunSimulation = useCallback(() => {
-    onStartSimulation();
-    setSimulationStep(0);
-    
-    // Simulate progress steps
-    const interval = setInterval(() => {
-      setSimulationStep(prev => {
-        if (prev >= SIMULATION_STEPS.length - 1) {
-          clearInterval(interval);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, 1500);
-  }, [onStartSimulation]);
+    onTriggerSimulation(simParams.targetVersion);
+  }, [onTriggerSimulation, simParams.targetVersion]);
 
   return (
     <div className="h-full flex flex-col bg-card border-l border-border">
@@ -721,12 +698,12 @@ export function ToolPanel({
             <Button 
               className="w-full" 
               onClick={handleRunSimulation}
-              disabled={!!processingJob}
+              disabled={isSimulating}
             >
-              {processingJob ? (
+              {isSimulating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Processando...
+                  Processando análise facial...
                 </>
               ) : (
                 <>
@@ -745,23 +722,14 @@ export function ToolPanel({
             <span className="text-xs font-medium text-foreground">Status</span>
           </div>
           
-          {processingJob ? (
+          {isSimulating ? (
             <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
               <div className="flex items-center gap-2 mb-2">
                 <Loader2 className="h-4 w-4 text-warning animate-spin" />
                 <span className="text-sm font-medium text-foreground">Processando</span>
               </div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex-1 h-1.5 bg-warning/20 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-warning rounded-full transition-all duration-500"
-                    style={{ width: `${processingJob.progress}%` }}
-                  />
-                </div>
-                <span className="text-xs font-mono text-warning">{processingJob.progress}%</span>
-              </div>
               <p className="text-xs text-muted-foreground">
-                {SIMULATION_STEPS[simulationStep]}
+                Aguardando resposta do agente n8n...
               </p>
             </div>
           ) : (
