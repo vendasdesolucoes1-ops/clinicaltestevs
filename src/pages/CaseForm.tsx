@@ -434,6 +434,10 @@ export default function CaseForm() {
                   existingUrl={existingPhotos[angle]}
                   required={REQUIRED_ANGLES.includes(angle)}
                   onUpload={(file) => handlePhotoUpload(angle, file)}
+                  onRemove={() => {
+                    setPhotos(prev => ({ ...prev, [angle]: null }));
+                    setExistingPhotos(prev => ({ ...prev, [angle]: null }));
+                  }}
                 />
               ))}
             </div>
@@ -477,7 +481,8 @@ function PhotoUploadSlot({
   file, 
   existingUrl,
   required,
-  onUpload 
+  onUpload,
+  onRemove
 }: { 
   angle: PhotoAngle;
   label: string;
@@ -485,12 +490,19 @@ function PhotoUploadSlot({
   existingUrl: string | null;
   required: boolean;
   onUpload: (file: File) => void;
+  onRemove: () => void;
 }) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       onUpload(selectedFile);
     }
+  };
+
+  const handleRemove = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onRemove();
   };
 
   const previewUrl = file ? URL.createObjectURL(file) : existingUrl;
@@ -517,7 +529,7 @@ function PhotoUploadSlot({
           className="hidden"
         />
         {previewUrl ? (
-          <div className="relative w-full h-full">
+          <div className="relative w-full h-full group">
             <img
               src={previewUrl}
               alt={label}
@@ -525,6 +537,16 @@ function PhotoUploadSlot({
             />
             <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-success flex items-center justify-center">
               <Check className="h-3 w-3 text-success-foreground" />
+            </div>
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="absolute top-1 left-1 w-5 h-5 rounded-full bg-destructive flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <X className="h-3 w-3 text-destructive-foreground" />
+            </button>
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+              <span className="text-xs text-white font-medium">Substituir</span>
             </div>
           </div>
         ) : (
