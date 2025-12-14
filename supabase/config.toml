@@ -2,3 +2,6 @@ project_id = "kekxxyqkrlmajkndwboj"
 
 [functions.analyze-face]
 verify_jwt = false
+
+[functions.webhook-n8n-notification]
+verify_jwt = false
