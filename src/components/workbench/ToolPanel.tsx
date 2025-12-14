@@ -78,6 +78,8 @@ interface ToolPanelProps {
   isAnalyzingFace: boolean;
   symmetryResult: SymmetryResult | null;
   onGetCanvasImage?: () => string | null;
+  caseName?: string;
+  currentPhotoAngle?: string;
 }
 
 const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
@@ -148,6 +150,8 @@ export function ToolPanel({
   isAnalyzingFace,
   symmetryResult,
   onGetCanvasImage,
+  caseName,
+  currentPhotoAngle,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
   
@@ -457,6 +461,8 @@ export function ToolPanel({
           symmetryResult={symmetryResult} 
           isAnalyzing={isAnalyzingFace}
           onGetCanvasImage={onGetCanvasImage}
+          caseName={caseName}
+          photoAngle={currentPhotoAngle}
         />
         <div className="p-3 border-b border-border">
           <div className="flex items-center gap-2 mb-3">

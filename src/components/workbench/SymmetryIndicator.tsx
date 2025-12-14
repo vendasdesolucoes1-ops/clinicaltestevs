@@ -8,15 +8,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
+import { exportAnalysisPDF } from '@/lib/exportAnalysisPDF';
 
 interface SymmetryIndicatorProps {
   symmetryResult: SymmetryResult | null;
   isAnalyzing: boolean;
   onGetCanvasImage?: () => string | null;
+  caseName?: string;
+  photoAngle?: string;
 }
 
-export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImage }: SymmetryIndicatorProps) {
+export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImage, caseName, photoAngle }: SymmetryIndicatorProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showRegions, setShowRegions] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -27,180 +29,16 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImag
     
     setIsExporting(true);
     try {
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 20;
-      let y = margin;
-
-      // Header
-      doc.setFontSize(18);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Relatório de Análise de Simetria Facial', margin, y);
-      y += 10;
-
-      // Date
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`, margin, y);
-      y += 15;
-
-      // Disclaimer
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.text('Simulação para planejamento — não substitui avaliação clínica', margin, y);
-      doc.setTextColor(0, 0, 0);
-      y += 10;
-
-      // Include canvas image
-      if (includeImage && onGetCanvasImage) {
-        const imageDataUrl = onGetCanvasImage();
-        if (imageDataUrl) {
-          try {
-            const imgWidth = pageWidth - 2 * margin;
-            const imgHeight = imgWidth * 0.75;
-            doc.addImage(imageDataUrl, 'PNG', margin, y, imgWidth, imgHeight);
-            y += imgHeight + 10;
-          } catch (imgError) {
-            console.warn('Não foi possível incluir a imagem no PDF:', imgError);
-          }
-        }
-      }
-
-      // Overall Score
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Pontuação Geral de Simetria', margin, y);
-      y += 8;
-
-      doc.setFontSize(28);
-      const scoreColor = symmetryResult.overallScore >= 90 ? [34, 197, 94] : 
-                         symmetryResult.overallScore >= 75 ? [234, 179, 8] :
-                         symmetryResult.overallScore >= 60 ? [249, 115, 22] : [239, 68, 68];
-      doc.setTextColor(scoreColor[0], scoreColor[1], scoreColor[2]);
-      doc.text(`${symmetryResult.overallScore}%`, margin, y);
-      doc.setTextColor(0, 0, 0);
-      y += 8;
-
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      const interpretation = symmetryResult.overallScore >= 90 ? 'Excelente simetria facial' :
-                            symmetryResult.overallScore >= 75 ? 'Boa simetria com pequenas variações' :
-                            symmetryResult.overallScore >= 60 ? 'Assimetria moderada detectada' :
-                            'Assimetria significativa requer atenção';
-      doc.text(interpretation, margin, y);
-      y += 15;
-
-      // Critical Areas
-      if (symmetryResult.criticalAreas && symmetryResult.criticalAreas.length > 0) {
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(239, 68, 68);
-        doc.text('⚠ Áreas Críticas', margin, y);
-        doc.setTextColor(0, 0, 0);
-        y += 6;
-        
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.text(symmetryResult.criticalAreas.join(', '), margin, y);
-        y += 12;
-      }
-
-      // Regional Analysis
-      if (symmetryResult.regionalScores && symmetryResult.regionalScores.length > 0) {
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Análise por Região Anatômica', margin, y);
-        y += 10;
-
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.setFillColor(240, 240, 240);
-        doc.rect(margin, y - 4, pageWidth - 2 * margin, 8, 'F');
-        doc.text('Região', margin + 2, y);
-        doc.text('Score', margin + 60, y);
-        doc.text('Status', margin + 90, y);
-        y += 8;
-
-        doc.setFont('helvetica', 'normal');
-        symmetryResult.regionalScores.forEach((region, index) => {
-          if (y > 270) {
-            doc.addPage();
-            y = margin;
-          }
-
-          if (index % 2 === 0) {
-            doc.setFillColor(250, 250, 250);
-            doc.rect(margin, y - 4, pageWidth - 2 * margin, 7, 'F');
-          }
-
-          doc.text(region.regionLabel, margin + 2, y);
-          
-          const regionColor = region.score >= 90 ? [34, 197, 94] : 
-                              region.score >= 75 ? [234, 179, 8] :
-                              region.score >= 60 ? [249, 115, 22] : [239, 68, 68];
-          doc.setTextColor(regionColor[0], regionColor[1], regionColor[2]);
-          doc.text(`${region.score}%`, margin + 60, y);
-          doc.setTextColor(0, 0, 0);
-          
-          const status = region.score >= 75 ? 'OK' : region.score >= 60 ? 'Atenção' : 'Crítico';
-          doc.text(status, margin + 90, y);
-          y += 7;
-        });
-        y += 10;
-      }
-
-      // Detailed Pairs Table
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Detalhamento por Pares Simétricos', margin, y);
-      y += 10;
-
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.setFillColor(240, 240, 240);
-      doc.rect(margin, y - 4, pageWidth - 2 * margin, 8, 'F');
-      doc.text('Par', margin + 2, y);
-      doc.text('Desvio', margin + 80, y);
-      doc.text('Dif. V', margin + 110, y);
-      doc.text('Dif. H', margin + 140, y);
-      y += 8;
-
-      doc.setFont('helvetica', 'normal');
-      symmetryResult.pairs.forEach((pair, index) => {
-        if (y > 270) {
-          doc.addPage();
-          y = margin;
-        }
-
-        if (index % 2 === 0) {
-          doc.setFillColor(250, 250, 250);
-          doc.rect(margin, y - 4, pageWidth - 2 * margin, 7, 'F');
-        }
-
-        doc.text(pair.label, margin + 2, y);
-        
-        const deviationColor = pair.deviation <= 10 ? [34, 197, 94] : 
-                               pair.deviation <= 25 ? [234, 179, 8] :
-                               pair.deviation <= 50 ? [249, 115, 22] : [239, 68, 68];
-        doc.setTextColor(deviationColor[0], deviationColor[1], deviationColor[2]);
-        doc.text(`${pair.deviation.toFixed(1)}%`, margin + 80, y);
-        doc.setTextColor(0, 0, 0);
-        
-        doc.text(`${pair.verticalDiff}%`, margin + 110, y);
-        doc.text(`${pair.horizontalDiff}%`, margin + 140, y);
-        y += 7;
+      const canvasImageUrl = includeImage && onGetCanvasImage ? onGetCanvasImage() : null;
+      
+      await exportAnalysisPDF({
+        caseName: caseName || 'Caso',
+        photoAngle,
+        symmetryResult,
+        canvasImageUrl,
+        analysisDate: new Date(),
       });
-
-      y += 10;
-
-      // Footer
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.text('V = diferença vertical | H = diferença horizontal do eixo central', margin, y);
-      y += 10;
-      doc.text('Gerado por InsightsCirurgic — Ferramenta de Planejamento Cirúrgico', margin, 285);
-
-      doc.save(`relatorio-simetria-${new Date().toISOString().split('T')[0]}.pdf`);
+      
       toast.success('Relatório PDF exportado com sucesso');
     } catch (error) {
       console.error('Erro ao exportar PDF:', error);
@@ -208,7 +46,7 @@ export function SymmetryIndicator({ symmetryResult, isAnalyzing, onGetCanvasImag
     } finally {
       setIsExporting(false);
     }
-  }, [symmetryResult, includeImage, onGetCanvasImage]);
+  }, [symmetryResult, includeImage, onGetCanvasImage, caseName, photoAngle]);
 
   if (isAnalyzing) {
     return (
