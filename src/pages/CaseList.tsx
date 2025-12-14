@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Search, 
@@ -34,32 +34,47 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { mockCases, type ClinicalCase } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 
-function StatusBadge({ status }: { status: ClinicalCase['status'] }) {
+type CaseStatus = Database['public']['Enums']['case_status'];
+type CaseType = Database['public']['Enums']['case_type'];
+
+interface ClinicalCaseRow {
+  id: string;
+  codename: string;
+  type: CaseType;
+  status: CaseStatus;
+  updatedAt: string;
+  tags: string[];
+  notes: string | null;
+  responsibleName: string;
+}
+
+function StatusBadge({ status }: { status: CaseStatus }) {
   const config = {
     ativo: { label: 'Ativo', className: 'status-ready' },
     arquivado: { label: 'Arquivado', className: 'bg-muted text-muted-foreground border-muted' },
-    em_processamento: { label: 'Processando', className: 'status-processing' },
-  };
+    em_processamento: { label: 'Em processamento', className: 'status-processing' },
+  } as const;
 
   const { label, className } = config[status];
 
   return (
-    <Badge variant="outline" className={cn("version-badge", className)}>
+    <Badge variant="outline" className={cn('version-badge', className)}>
       {label}
     </Badge>
   );
 }
 
-function TypeBadge({ type }: { type: ClinicalCase['type'] }) {
+function TypeBadge({ type }: { type: CaseType }) {
   return (
     <Badge 
       variant="outline" 
       className={cn(
-        "text-xs font-medium",
+        'text-xs font-medium',
         type === 'queimadura' 
           ? 'border-warning/30 text-warning bg-warning/10' 
           : 'border-primary/30 text-primary bg-primary/10'
@@ -74,19 +89,62 @@ export default function CaseList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [cases, setCases] = useState<ClinicalCaseRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadCases = async () => {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('clinical_cases')
+        .select('id, codename, type, status, updated_at, tags, notes, profiles:responsible_id(first_name, last_name)')
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Erro ao carregar casos:', error);
+        toast.error('Não foi possível carregar os casos');
+        setIsLoading(false);
+        return;
+      }
+
+      const mapped: ClinicalCaseRow[] = (data || []).map((item: any) => {
+        const fullName = item.profiles
+          ? `${item.profiles.first_name ?? ''} ${item.profiles.last_name ?? ''}`.trim()
+          : '';
+
+        return {
+          id: item.id,
+          codename: item.codename,
+          type: item.type,
+          status: item.status,
+          updatedAt: item.updated_at,
+          tags: item.tags ?? [],
+          notes: item.notes ?? null,
+          responsibleName: fullName || '—',
+        };
+      });
+
+      setCases(mapped);
+      setIsLoading(false);
+    };
+
+    loadCases();
+  }, []);
 
   const filteredCases = useMemo(() => {
-    return mockCases.filter(caseItem => {
-      const matchesSearch = caseItem.codename.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           caseItem.id.toLowerCase().includes(searchQuery.toLowerCase());
+    return cases.filter((caseItem) => {
+      const normalizedSearch = searchQuery.toLowerCase();
+      const matchesSearch =
+        caseItem.codename.toLowerCase().includes(normalizedSearch) ||
+        caseItem.id.toLowerCase().includes(normalizedSearch);
       const matchesStatus = statusFilter === 'all' || caseItem.status === statusFilter;
       const matchesType = typeFilter === 'all' || caseItem.type === typeFilter;
       return matchesSearch && matchesStatus && matchesType;
     });
-  }, [searchQuery, statusFilter, typeFilter]);
+  }, [cases, searchQuery, statusFilter, typeFilter]);
 
-  const handleArchive = (caseItem: ClinicalCase) => {
-    toast.success(`Caso ${caseItem.codename} arquivado`);
+  const handleArchive = (caseItem: ClinicalCaseRow) => {
+    toast.success(`Caso ${caseItem.codename} arquivado (apenas visual, ainda não move para "arquivado")`);
   };
 
   const formatDate = (dateString: string) => {
@@ -168,10 +226,17 @@ export default function CaseList() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredCases.map((caseItem) => (
+            {isLoading && (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  Carregando casos...
+                </TableCell>
+              </TableRow>
+            )}
+            {!isLoading && filteredCases.map((caseItem) => (
               <TableRow key={caseItem.id} className="group">
                 <TableCell className="font-mono text-xs text-muted-foreground">
-                  {caseItem.id.replace('caso_', '#')}
+                  #{caseItem.id.slice(0, 8)}
                 </TableCell>
                 <TableCell>
                   <Link 
@@ -188,7 +253,7 @@ export default function CaseList() {
                   <StatusBadge status={caseItem.status} />
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {caseItem.responsible}
+                  {caseItem.responsibleName}
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1 flex-wrap">
