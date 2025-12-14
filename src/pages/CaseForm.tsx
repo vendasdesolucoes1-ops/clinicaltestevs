@@ -20,6 +20,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -492,6 +503,8 @@ function PhotoUploadSlot({
   onUpload: (file: File) => void;
   onRemove: () => void;
 }) {
+  const [showConfirm, setShowConfirm] = useState(false);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
@@ -499,10 +512,22 @@ function PhotoUploadSlot({
     }
   };
 
-  const handleRemove = (e: React.MouseEvent) => {
+  const handleRemoveClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // If it's an existing photo (from database), show confirmation
+    if (existingUrl && !file) {
+      setShowConfirm(true);
+    } else {
+      // If it's just a new upload, remove immediately
+      onRemove();
+    }
+  };
+
+  const handleConfirmRemove = () => {
     onRemove();
+    setShowConfirm(false);
   };
 
   const previewUrl = file ? URL.createObjectURL(file) : existingUrl;
@@ -540,7 +565,7 @@ function PhotoUploadSlot({
             </div>
             <button
               type="button"
-              onClick={handleRemove}
+              onClick={handleRemoveClick}
               className="absolute top-1 left-1 w-5 h-5 rounded-full bg-destructive flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <X className="h-3 w-3 text-destructive-foreground" />
@@ -556,6 +581,23 @@ function PhotoUploadSlot({
           </div>
         )}
       </label>
+
+      <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover foto?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta foto já está salva no sistema. Ao remover, você precisará enviar uma nova foto para o ângulo "{label}".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRemove} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
