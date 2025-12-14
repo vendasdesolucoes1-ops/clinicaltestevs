@@ -8,7 +8,8 @@ import {
   ChevronRight,
   Loader2,
   Scan,
-  Image
+  Image,
+  CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -54,6 +55,7 @@ export default function Workbench() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string>('/placeholder.svg');
   const [showMesh, setShowMesh] = useState(true);
   const [meshOpacity, setMeshOpacity] = useState(80);
+  const [analyzedPhotoIds, setAnalyzedPhotoIds] = useState<Set<string>>(new Set());
   
   const { 
     objects, 
@@ -193,12 +195,22 @@ export default function Workbench() {
         setCaseData(clinicalCase);
         setSelectedVersion(versions[0] || null);
 
-        // Set initial image (prefer front photo) and trigger analysis
+        // Fetch which photos have existing analyses
+        const { data: analysesData } = await supabase
+          .from('facial_analyses')
+          .select('photo_id')
+          .eq('case_id', id);
+        
+        if (analysesData) {
+          setAnalyzedPhotoIds(new Set(analysesData.map(a => a.photo_id)));
+        }
+
+        // Set initial image (prefer front photo) and load analysis if exists
         if (photos.length > 0) {
           const frontPhoto = photos.find(p => p.angle === 'frente') || photos[0];
           setCurrentImageUrl(frontPhoto.url);
 
-          // Check for existing facial analysis
+          // Check for existing facial analysis for front photo
           const { data: existingAnalysis } = await supabase
             .from('facial_analyses')
             .select('*')
@@ -671,10 +683,15 @@ export default function Workbench() {
                 <SelectContent className="z-50">
                   {caseData.photos.map((photo) => (
                     <SelectItem key={photo.id} value={photo.url} className="text-xs">
-                      {photo.angle === 'frente' ? 'Frente' :
-                       photo.angle === 'perfil_d' ? 'Perfil Direito' :
-                       photo.angle === 'perfil_e' ? 'Perfil Esquerdo' :
-                       photo.angle === 'tres_quartos' ? '3/4' : photo.angle}
+                      <span className="flex items-center gap-2">
+                        {photo.angle === 'frente' ? 'Frente' :
+                         photo.angle === 'perfil_d' ? 'Perfil Direito' :
+                         photo.angle === 'perfil_e' ? 'Perfil Esquerdo' :
+                         photo.angle === 'tres_quartos' ? '3/4' : photo.angle}
+                        {analyzedPhotoIds.has(photo.id) && (
+                          <CheckCircle2 className="h-3 w-3 text-success" />
+                        )}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
