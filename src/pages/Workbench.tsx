@@ -403,6 +403,7 @@ export default function Workbench() {
           {viewMode === '3d' && (
             <Viewer3D 
               modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
+              imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
               isProcessing={processingJob?.versionId === selectedVersion?.id}
             />
           )}
