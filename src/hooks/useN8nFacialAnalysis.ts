@@ -17,6 +17,13 @@ interface AnalysisJob {
   startedAt: string;
 }
 
+// New version created after simulation
+export interface CreatedVersion {
+  id: string;
+  name: string;
+  type: 'A' | 'B';
+}
+
 interface UseN8nFacialAnalysisReturn {
   // Job state
   analysisJob: AnalysisJob | null;
@@ -28,8 +35,13 @@ interface UseN8nFacialAnalysisReturn {
   
   // Actions
   triggerAnalysis: (caseId: string, imageUrl: string) => Promise<void>;
+  triggerSimulation: (caseId: string, imageUrl: string, targetVersion: 'A' | 'B') => Promise<void>;
   retryAnalysis: () => Promise<void>;
   clearJob: () => void;
+  
+  // Created version after simulation
+  createdVersion: CreatedVersion | null;
+  clearCreatedVersion: () => void;
   
   // Mesh settings
   meshDensity: MeshDensity;
@@ -41,11 +53,14 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   const [meshData, setMeshData] = useState<FacialMeshData | null>(null);
   const [faceROI, setFaceROI] = useState<FaceROI | null>(null);
   const [meshDensity, setMeshDensity] = useState<MeshDensity>('dense');
+  const [createdVersion, setCreatedVersion] = useState<CreatedVersion | null>(null);
   
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const pollingCountRef = useRef(0);
   const lastImageUrlRef = useRef<string>('');
   const lastCaseIdRef = useRef<string>('');
+  const targetVersionRef = useRef<'A' | 'B' | null>(null);
+  const isSimulationModeRef = useRef(false);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -139,11 +154,50 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       if (status === 'completed') {
         stopPolling();
         await fetchAnalysisResults(caseId);
-        toast.success('Análise facial concluída!', {
-          description: 'Os landmarks foram detectados com sucesso.'
-        });
+        
+        // If in simulation mode, create new version
+        if (isSimulationModeRef.current && targetVersionRef.current) {
+          const versionName = `Análise Facial ${new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+          
+          const { data: newVersion, error: versionError } = await supabase
+            .from('case_versions')
+            .insert({
+              case_id: caseId,
+              name: versionName,
+              type: targetVersionRef.current,
+              status: 'pronto',
+              description: 'Versão criada automaticamente após análise facial via n8n',
+            })
+            .select()
+            .single();
+          
+          if (!versionError && newVersion) {
+            setCreatedVersion({
+              id: newVersion.id,
+              name: newVersion.name,
+              type: newVersion.type as 'A' | 'B',
+            });
+            toast.success('Análise facial concluída!', {
+              description: `Nova versão "${versionName}" criada com sucesso.`
+            });
+          } else {
+            console.error('Erro ao criar versão:', versionError);
+            toast.success('Análise facial concluída!', {
+              description: 'Os landmarks foram detectados com sucesso.'
+            });
+          }
+          
+          isSimulationModeRef.current = false;
+          targetVersionRef.current = null;
+        } else {
+          toast.success('Análise facial concluída!', {
+            description: 'Os landmarks foram detectados com sucesso.'
+          });
+        }
       } else if (status === 'failed') {
         stopPolling();
+        isSimulationModeRef.current = false;
+        targetVersionRef.current = null;
         toast.error('Análise facial falhou', {
           description: job.error_message || 'Erro desconhecido durante o processamento.'
         });
@@ -154,6 +208,8 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     pollingCountRef.current++;
     if (pollingCountRef.current >= MAX_POLLING_ATTEMPTS) {
       stopPolling();
+      isSimulationModeRef.current = false;
+      targetVersionRef.current = null;
       setAnalysisJob(prev => prev ? {
         ...prev,
         status: 'failed',
@@ -266,8 +322,23 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   // Retry last analysis
   const retryAnalysis = useCallback(async () => {
     if (lastCaseIdRef.current && lastImageUrlRef.current) {
-      await triggerAnalysis(lastCaseIdRef.current, lastImageUrlRef.current);
+      if (isSimulationModeRef.current && targetVersionRef.current) {
+        await triggerSimulation(lastCaseIdRef.current, lastImageUrlRef.current, targetVersionRef.current);
+      } else {
+        await triggerAnalysis(lastCaseIdRef.current, lastImageUrlRef.current);
+      }
     }
+  }, [triggerAnalysis]);
+
+  // Trigger simulation with version creation
+  const triggerSimulation = useCallback(async (caseId: string, imageUrl: string, targetVersion: 'A' | 'B') => {
+    // Set simulation mode flags before triggering
+    isSimulationModeRef.current = true;
+    targetVersionRef.current = targetVersion;
+    setCreatedVersion(null);
+    
+    // Use the same triggerAnalysis flow
+    await triggerAnalysis(caseId, imageUrl);
   }, [triggerAnalysis]);
 
   // Clear job state
@@ -276,7 +347,14 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     setAnalysisJob(null);
     setMeshData(null);
     setFaceROI(null);
+    isSimulationModeRef.current = false;
+    targetVersionRef.current = null;
   }, [stopPolling]);
+
+  // Clear created version state
+  const clearCreatedVersion = useCallback(() => {
+    setCreatedVersion(null);
+  }, []);
 
   const isProcessing = analysisJob?.status === 'processing';
 
@@ -286,8 +364,11 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     meshData,
     faceROI,
     triggerAnalysis,
+    triggerSimulation,
     retryAnalysis,
     clearJob,
+    createdVersion,
+    clearCreatedVersion,
     meshDensity,
     setMeshDensity,
   };
