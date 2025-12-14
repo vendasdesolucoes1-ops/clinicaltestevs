@@ -61,6 +61,7 @@ export default function Workbench() {
     setMeshEditMode,
     connectingFrom,
     analyzeImage,
+    loadExistingAnalysis,
     updatePoint,
     addPoint,
     removePoint,
@@ -181,10 +182,31 @@ export default function Workbench() {
         setCaseData(clinicalCase);
         setSelectedVersion(versions[0] || null);
 
-        // Set initial image (prefer front photo)
+        // Set initial image (prefer front photo) and trigger analysis
         if (photos.length > 0) {
           const frontPhoto = photos.find(p => p.angle === 'frente') || photos[0];
           setCurrentImageUrl(frontPhoto.url);
+
+          // Check for existing facial analysis
+          const { data: existingAnalysis } = await supabase
+            .from('facial_analyses')
+            .select('*')
+            .eq('photo_id', frontPhoto.id)
+            .maybeSingle();
+
+          if (existingAnalysis && existingAnalysis.points) {
+            // Load existing mesh data
+            loadExistingAnalysis({
+              points: existingAnalysis.points as any,
+              faceROI: existingAnalysis.face_roi as any,
+              midlinePoints: existingAnalysis.midline_points || [],
+              customConnections: existingAnalysis.custom_connections as any,
+            });
+            toast.info('Análise facial carregada');
+          } else {
+            // Trigger new analysis
+            analyzeImage(frontPhoto.url);
+          }
         }
 
         // Set processing job if exists
@@ -245,7 +267,7 @@ export default function Workbench() {
     loadCase();
   }, [id, navigate]);
 
-  // Handle adding a new photo - uploads to Supabase and triggers n8n analysis
+  // Handle adding a new photo - uploads to Supabase and triggers analysis
   const handleAddPhoto = useCallback(async (file: File) => {
     if (!caseData) return;
 
@@ -259,7 +281,7 @@ export default function Workbench() {
       const fileName = `${caseData.id}/${Date.now()}.${fileExt}`;
 
       // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('case-photos')
         .upload(fileName, file, { upsert: true });
 
@@ -276,9 +298,27 @@ export default function Workbench() {
         .from('case-photos')
         .getPublicUrl(fileName);
 
+      // Insert photo record into case_photos table
+      const { data: photoRecord, error: insertError } = await supabase
+        .from('case_photos')
+        .insert({
+          case_id: caseData.id,
+          angle: 'frente',
+          url: publicUrl,
+          storage_path: fileName,
+          captured_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Erro ao inserir foto:', insertError);
+        toast.error('Erro ao salvar registro da foto');
+      }
+
       // Update case data with new photo
       const newPhoto = {
-        id: `ph_${Date.now()}`,
+        id: photoRecord?.id || `ph_${Date.now()}`,
         angle: 'frente' as const,
         url: publicUrl,
         capturedAt: new Date().toISOString(),
@@ -292,8 +332,28 @@ export default function Workbench() {
       // Update display URL to the public one
       setCurrentImageUrl(publicUrl);
 
-      // Trigger n8n async analysis
-      await triggerAnalysis(caseData.id, publicUrl);
+      // Trigger local analysis (more reliable than n8n for now)
+      const meshResult = await analyzeImage(publicUrl);
+
+      // Save analysis results to Supabase if successful
+      if (meshResult && photoRecord) {
+        const { error: analysisError } = await supabase
+          .from('facial_analyses')
+          .insert({
+            case_id: caseData.id,
+            photo_id: photoRecord.id,
+            points: meshResult.points as any,
+            face_roi: meshResult.faceROI as any,
+            midline_points: meshResult.midlinePoints,
+            connections: meshResult.connections as any,
+          });
+
+        if (analysisError) {
+          console.error('Erro ao salvar análise:', analysisError);
+        } else {
+          toast.success('Análise facial salva');
+        }
+      }
 
     } catch (error) {
       console.error('Erro no upload/análise:', error);
@@ -304,7 +364,7 @@ export default function Workbench() {
       setCurrentImageUrl(blobUrl);
       await analyzeImage(blobUrl);
     }
-  }, [caseData, triggerAnalysis, analyzeImage]);
+  }, [caseData, analyzeImage]);
 
   // Handlers
   const handleUndo = useCallback(() => {
