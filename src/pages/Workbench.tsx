@@ -6,8 +6,10 @@ import {
   Box, 
   GitCompare,
   ChevronRight,
-  Loader2
+  Loader2,
+  Scan
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VersionPanel } from '@/components/workbench/VersionPanel';
@@ -203,10 +205,8 @@ export default function Workbench() {
               customConnections: existingAnalysis.custom_connections as any,
             });
             toast.info('Análise facial carregada');
-          } else {
-            // Trigger n8n analysis via webhook
-            triggerAnalysis(id, frontPhoto.url);
           }
+          // No automatic analysis trigger - user must click "Gerar Análise Facial" button
         }
 
         // Set processing job if exists
@@ -330,8 +330,10 @@ export default function Workbench() {
       // Update display URL to the public one
       setCurrentImageUrl(publicUrl);
 
-      // Trigger n8n analysis via webhook
-      triggerAnalysis(caseData.id, publicUrl);
+      // No automatic analysis - user must click "Gerar Análise Facial" button
+      toast.success('Foto adicionada', {
+        description: 'Clique em "Gerar Análise Facial" para processar.'
+      });
 
     } catch (error) {
       console.error('Erro no upload/análise:', error);
@@ -643,26 +645,49 @@ export default function Workbench() {
             )}
           </div>
 
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-            <TabsList className="h-8">
-              <TabsTrigger value="2d" className="text-xs gap-1.5 px-3">
-                <Layers className="h-3.5 w-3.5" />
-                2D
-              </TabsTrigger>
-              <TabsTrigger value="3d" className="text-xs gap-1.5 px-3">
-                <Box className="h-3.5 w-3.5" />
-                3D
-              </TabsTrigger>
-              <TabsTrigger 
-                value="compare" 
-                className="text-xs gap-1.5 px-3"
-                disabled={versionsA.length === 0 && versionsB.length === 0}
-              >
-                <GitCompare className="h-3.5 w-3.5" />
-                Comparar
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex items-center gap-3">
+            {/* Gerar Análise Facial Button */}
+            <Button
+              variant="default"
+              size="sm"
+              className="gap-2"
+              disabled={!currentImageUrl || currentImageUrl === '/placeholder.svg' || isAnalyzing}
+              onClick={() => caseData && triggerAnalysis(caseData.id, currentImageUrl)}
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Analisando...
+                </>
+              ) : (
+                <>
+                  <Scan className="h-4 w-4" />
+                  Gerar Análise Facial
+                </>
+              )}
+            </Button>
+
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+              <TabsList className="h-8">
+                <TabsTrigger value="2d" className="text-xs gap-1.5 px-3">
+                  <Layers className="h-3.5 w-3.5" />
+                  2D
+                </TabsTrigger>
+                <TabsTrigger value="3d" className="text-xs gap-1.5 px-3">
+                  <Box className="h-3.5 w-3.5" />
+                  3D
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="compare" 
+                  className="text-xs gap-1.5 px-3"
+                  disabled={versionsA.length === 0 && versionsB.length === 0}
+                >
+                  <GitCompare className="h-3.5 w-3.5" />
+                  Comparar
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </div>
 
         {/* Canvas Area */}
