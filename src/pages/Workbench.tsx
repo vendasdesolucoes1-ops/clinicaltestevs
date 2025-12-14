@@ -26,6 +26,7 @@ import { SimulationCanvas, SimulationCanvasRef } from '@/components/workbench/Si
 import { Viewer3D } from '@/components/workbench/Viewer3D';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
+import { AnalysisHistory } from '@/components/workbench/AnalysisHistory';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
@@ -797,7 +798,7 @@ export default function Workbench() {
       </div>
 
       {/* Right Panel - Tools */}
-      <div className="w-72 shrink-0">
+      <div className="w-72 shrink-0 flex flex-col">
         <ToolPanel
           activeTool={activeTool}
           onToolChange={setActiveTool}
@@ -822,6 +823,16 @@ export default function Workbench() {
           symmetryResult={symmetryResult}
           onGetCanvasImage={() => canvasRef.current?.getCanvasDataUrl() ?? null}
         />
+        
+        {/* Analysis History */}
+        {caseData && (
+          <div className="p-3 border-t border-border bg-card">
+            <AnalysisHistory 
+              caseId={caseData.id} 
+              onLoadAnalysis={loadExistingAnalysis}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
