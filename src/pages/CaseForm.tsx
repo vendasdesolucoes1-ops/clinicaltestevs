@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -22,12 +22,14 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { api, mockCases } from '@/lib/mockData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 
-type PhotoAngle = 'frente' | 'perfil_d' | 'perfil_e' | 'tres_quartos';
+type PhotoAngle = Database['public']['Enums']['photo_angle'];
+type CaseType = Database['public']['Enums']['case_type'];
 
 const REQUIRED_ANGLES: PhotoAngle[] = ['frente', 'perfil_d', 'perfil_e'];
 const OPTIONAL_ANGLES: PhotoAngle[] = ['tres_quartos'];
@@ -44,14 +46,12 @@ export default function CaseForm() {
   const { id } = useParams();
   const isEditing = Boolean(id);
 
-  const existingCase = isEditing ? mockCases.find(c => c.id === id) : null;
-
   const [formData, setFormData] = useState({
-    codename: existingCase?.codename || '',
-    type: existingCase?.type || 'trauma',
-    notes: existingCase?.notes || '',
-    tags: existingCase?.tags || [],
-    consentRegistered: existingCase?.consentRegistered || false,
+    codename: '',
+    type: 'trauma' as CaseType,
+    notes: '',
+    tags: [] as string[],
+    consentRegistered: false,
   });
 
   const [photos, setPhotos] = useState<Record<PhotoAngle, File | null>>({
@@ -63,6 +63,42 @@ export default function CaseForm() {
 
   const [tagInput, setTagInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Get current user
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+      }
+    };
+    getUser();
+  }, []);
+
+  // Load existing case if editing
+  useEffect(() => {
+    if (isEditing && id) {
+      const loadCase = async () => {
+        const { data: caseData } = await supabase
+          .from('clinical_cases')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (caseData) {
+          setFormData({
+            codename: caseData.codename,
+            type: caseData.type,
+            notes: caseData.notes || '',
+            tags: caseData.tags || [],
+            consentRegistered: caseData.consent_registered,
+          });
+        }
+      };
+      loadCase();
+    }
+  }, [isEditing, id]);
 
   const handlePhotoUpload = (angle: PhotoAngle, file: File) => {
     setPhotos(prev => ({ ...prev, [angle]: file }));
@@ -88,6 +124,26 @@ export default function CaseForm() {
     }));
   };
 
+  const uploadPhotoToStorage = async (caseId: string, angle: PhotoAngle, file: File): Promise<string | null> => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${caseId}/${angle}_${Date.now()}.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('case-photos')
+      .upload(fileName, file, { upsert: true });
+    
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      return null;
+    }
+    
+    const { data: { publicUrl } } = supabase.storage
+      .from('case-photos')
+      .getPublicUrl(fileName);
+    
+    return publicUrl;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -107,21 +163,94 @@ export default function CaseForm() {
       return;
     }
 
+    if (!userId) {
+      toast.error('Você precisa estar logado para criar um caso');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      if (isEditing && existingCase) {
-        await api.updateCase(existingCase.id, formData);
+      let caseId: string;
+
+      if (isEditing && id) {
+        // Update existing case
+        const { error } = await supabase
+          .from('clinical_cases')
+          .update({
+            codename: formData.codename,
+            type: formData.type,
+            notes: formData.notes,
+            tags: formData.tags,
+            consent_registered: formData.consentRegistered,
+            consent_date: formData.consentRegistered ? new Date().toISOString() : null,
+          })
+          .eq('id', id);
+        
+        if (error) throw error;
+        caseId = id;
         toast.success('Caso atualizado com sucesso');
       } else {
-        const newCase = await api.createCase(formData);
-        toast.success('Caso criado com sucesso');
-        navigate(`/workbench/${newCase.id}`);
-        return;
+        // Create new case
+        const { data: newCase, error } = await supabase
+          .from('clinical_cases')
+          .insert({
+            codename: formData.codename,
+            type: formData.type,
+            notes: formData.notes,
+            tags: formData.tags,
+            consent_registered: formData.consentRegistered,
+            consent_date: formData.consentRegistered ? new Date().toISOString() : null,
+            responsible_id: userId,
+          })
+          .select()
+          .single();
+        
+        if (error) throw error;
+        caseId = newCase.id;
+
+        // Create base version
+        await supabase
+          .from('case_versions')
+          .insert({
+            case_id: caseId,
+            name: 'Original',
+            type: 'base',
+            description: 'Versão base - imagens originais',
+            status: 'pronto',
+            author_id: userId,
+          });
       }
-      navigate('/cases');
-    } catch (error) {
-      toast.error('Erro ao salvar o caso');
+
+      // Upload photos
+      const photosToUpload = Object.entries(photos).filter(([_, file]) => file !== null);
+      
+      for (const [angle, file] of photosToUpload) {
+        if (!file) continue;
+        
+        const publicUrl = await uploadPhotoToStorage(caseId, angle as PhotoAngle, file);
+        
+        if (publicUrl) {
+          await supabase
+            .from('case_photos')
+            .insert({
+              case_id: caseId,
+              angle: angle as PhotoAngle,
+              url: publicUrl,
+              storage_path: `${caseId}/${angle}_${Date.now()}`,
+            });
+        }
+      }
+
+      if (!isEditing) {
+        toast.success('Caso criado com sucesso');
+        navigate(`/workbench/${caseId}`);
+      } else {
+        navigate('/cases');
+      }
+    } catch (error: any) {
+      console.error('Error saving case:', error);
+      toast.error(error.message || 'Erro ao salvar o caso');
     } finally {
       setIsSubmitting(false);
     }

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -12,22 +13,45 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!email || !password) {
+      toast.error('Por favor, preencha todos os campos');
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulate login
-    await new Promise(r => setTimeout(r, 1000));
-    
-    if (email && password) {
-      toast.success('Login realizado com sucesso');
-      navigate('/dashboard');
-    } else {
-      toast.error('Por favor, preencha todos os campos');
+    try {
+      if (isSignUp) {
+        // Sign up
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        
+        if (error) throw error;
+        toast.success('Conta criada! Verifique seu e-mail para confirmar.');
+      } else {
+        // Sign in
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        
+        if (error) throw error;
+        toast.success('Login realizado com sucesso');
+        navigate('/dashboard');
+      }
+    } catch (error: any) {
+      console.error('Auth error:', error);
+      toast.error(error.message || 'Erro de autenticação');
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   return (
@@ -87,9 +111,11 @@ export default function Login() {
           </div>
 
           <div className="text-center lg:text-left">
-            <h2 className="text-2xl font-semibold text-foreground">Entrar</h2>
+            <h2 className="text-2xl font-semibold text-foreground">
+              {isSignUp ? 'Criar conta' : 'Entrar'}
+            </h2>
             <p className="mt-2 text-muted-foreground">
-              Acesse sua conta para continuar
+              {isSignUp ? 'Crie sua conta para começar' : 'Acesse sua conta para continuar'}
             </p>
           </div>
 
@@ -127,7 +153,7 @@ export default function Login() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
+                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
                   className="h-11 pr-10"
                 />
                 <button
@@ -144,27 +170,39 @@ export default function Login() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="rounded border-input" />
-                <span className="text-muted-foreground">Lembrar-me</span>
-              </label>
-              <button type="button" className="text-primary hover:underline">
-                Esqueci minha senha
-              </button>
-            </div>
+            {!isSignUp && (
+              <div className="flex items-center justify-between text-sm">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" className="rounded border-input" />
+                  <span className="text-muted-foreground">Lembrar-me</span>
+                </label>
+                <button type="button" className="text-primary hover:underline">
+                  Esqueci minha senha
+                </button>
+              </div>
+            )}
 
             <Button type="submit" className="w-full h-11" disabled={isLoading}>
               {isLoading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  Entrando...
+                  {isSignUp ? 'Criando conta...' : 'Entrando...'}
                 </span>
               ) : (
-                'Entrar'
+                isSignUp ? 'Criar conta' : 'Entrar'
               )}
             </Button>
           </form>
+
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-sm text-primary hover:underline"
+            >
+              {isSignUp ? 'Já tem conta? Entre aqui' : 'Não tem conta? Cadastre-se'}
+            </button>
+          </div>
 
           <p className="text-center text-xs text-muted-foreground">
             Simulação para planejamento — não substitui avaliação clínica.
