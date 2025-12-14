@@ -658,7 +658,10 @@ export default function Workbench() {
             {caseData.photos.length > 0 && (
               <Select
                 value={currentImageUrl}
-                onValueChange={(url) => setCurrentImageUrl(url)}
+                onValueChange={(url) => {
+                  setCurrentImageUrl(url);
+                  clearMesh(); // Clear existing mesh when switching photos
+                }}
               >
                 <SelectTrigger className="w-[180px] h-8 text-xs">
                   <Image className="h-3.5 w-3.5 mr-2" />
