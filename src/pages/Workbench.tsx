@@ -671,9 +671,30 @@ export default function Workbench() {
             {caseData.photos.length > 0 && (
               <Select
                 value={currentImageUrl}
-                onValueChange={(url) => {
+                onValueChange={async (url) => {
                   setCurrentImageUrl(url);
                   clearMesh(); // Clear existing mesh when switching photos
+                  
+                  // Find the selected photo and check for existing analysis
+                  const selectedPhoto = caseData.photos.find(p => p.url === url);
+                  if (selectedPhoto && analyzedPhotoIds.has(selectedPhoto.id)) {
+                    // Load existing analysis for this photo
+                    const { data: existingAnalysis } = await supabase
+                      .from('facial_analyses')
+                      .select('*')
+                      .eq('photo_id', selectedPhoto.id)
+                      .maybeSingle();
+                    
+                    if (existingAnalysis && existingAnalysis.points) {
+                      loadExistingAnalysis({
+                        points: existingAnalysis.points as any,
+                        faceROI: existingAnalysis.face_roi as any,
+                        midlinePoints: existingAnalysis.midline_points || [],
+                        customConnections: existingAnalysis.custom_connections as any,
+                      });
+                      toast.info('Análise facial carregada');
+                    }
+                  }
                 }}
               >
                 <SelectTrigger className="w-[180px] h-8 text-xs">
