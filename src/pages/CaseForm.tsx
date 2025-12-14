@@ -37,7 +37,6 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { N8N_WEBHOOK_URL } from '@/lib/config';
 import type { Database } from '@/integrations/supabase/types';
 
 type PhotoAngle = Database['public']['Enums']['photo_angle'];
@@ -283,40 +282,7 @@ export default function CaseForm() {
         }
       }
 
-      // Trigger n8n facial analysis for frontal photo
-      const frontalUrl = uploadedPhotosUrls.find(p => p.angle === 'frente')?.url;
-      if (frontalUrl) {
-        const jobId = crypto.randomUUID();
-        
-        // Insert job record for polling
-        await supabase.from('facial_analysis_jobs').insert({
-          job_id: jobId,
-          case_id: caseId,
-          image_url: frontalUrl,
-          status: 'processing',
-          timestamp_start: new Date().toISOString(),
-        });
-        
-        // Send POST to n8n webhook
-        try {
-          const response = await fetch(N8N_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              job_id: jobId,
-              case_id: caseId,
-              image_url: frontalUrl,
-              mode: "clinical",
-            }),
-          });
-          
-          if (!response.ok) {
-            console.error('Erro ao disparar webhook n8n:', response.status);
-          }
-        } catch (webhookError) {
-          console.error('Erro ao conectar com n8n:', webhookError);
-        }
-      }
+      // No automatic analysis - user must click "Gerar Análise Facial" in Workbench
 
       if (!isEditing) {
         toast.success('Caso criado com sucesso');
