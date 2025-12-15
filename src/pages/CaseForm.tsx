@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
-import { N8N_FACIAL_ANALYSIS_WEBHOOK } from '@/lib/config';
+import { N8N_WEBHOOK_URL } from '@/lib/config';
 
 type PhotoAngle = Database['public']['Enums']['photo_angle'];
 type CaseType = Database['public']['Enums']['case_type'];
@@ -279,42 +279,40 @@ export default function CaseForm() {
         }
       }
 
-      // Trigger n8n webhook with case data and photos
-      if (uploadedPhotosUrls.length > 0) {
-        try {
-          const webhookPayload = {
-            case_id: caseId,
-            codename: formData.codename,
-            type: formData.type,
-            notes: formData.notes,
-            tags: formData.tags,
-            photos: uploadedPhotosUrls.map(p => ({
-              angle: p.angle,
-              url: p.url,
-            })),
-            created_at: new Date().toISOString(),
-            user_id: userId,
-          };
+      // Always trigger n8n webhook with case data (even without photos)
+      try {
+        const webhookPayload = {
+          case_id: caseId,
+          codename: formData.codename,
+          type: formData.type,
+          notes: formData.notes,
+          tags: formData.tags,
+          photos: uploadedPhotosUrls.map(p => ({
+            angle: p.angle,
+            url: p.url,
+          })),
+          created_at: new Date().toISOString(),
+          user_id: userId,
+        };
 
-          console.log('Enviando dados ao n8n webhook:', webhookPayload);
+        console.log('Enviando dados ao n8n webhook:', webhookPayload);
 
-          const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(webhookPayload),
-          });
+        const response = await fetch(N8N_WEBHOOK_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(webhookPayload),
+        });
 
-          if (response.ok) {
-            console.log('Webhook n8n acionado com sucesso');
-          } else {
-            console.error('Erro ao acionar webhook n8n:', response.status);
-          }
-        } catch (webhookError) {
-          console.error('Erro ao enviar para webhook n8n:', webhookError);
-          // Continue anyway - webhook failure shouldn't block case creation
+        if (response.ok) {
+          console.log('Webhook n8n acionado com sucesso');
+        } else {
+          console.error('Erro ao acionar webhook n8n:', response.status);
         }
+      } catch (webhookError) {
+        console.error('Erro ao enviar para webhook n8n:', webhookError);
+        // Continue anyway - webhook failure shouldn't block case creation
       }
 
       if (!isEditing) {
