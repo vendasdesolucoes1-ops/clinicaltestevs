@@ -328,6 +328,7 @@ export type Database = {
       facial_analysis_jobs: {
         Row: {
           case_id: string
+          created_at: string | null
           error_message: string | null
           error_stage: string | null
           image_url: string
@@ -338,16 +339,18 @@ export type Database = {
         }
         Insert: {
           case_id: string
+          created_at?: string | null
           error_message?: string | null
           error_stage?: string | null
           image_url: string
-          job_id: string
+          job_id?: string
           status: Database["public"]["Enums"]["job_status"]
           timestamp_end?: string | null
           timestamp_start?: string | null
         }
         Update: {
           case_id?: string
+          created_at?: string | null
           error_message?: string | null
           error_stage?: string | null
           image_url?: string
