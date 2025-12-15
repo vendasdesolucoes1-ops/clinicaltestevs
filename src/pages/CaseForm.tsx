@@ -50,7 +50,7 @@ const ANGLE_LABELS: Record<PhotoAngle, string> = {
   frente: 'Frente',
   perfil_d: 'Perfil Direito',
   perfil_e: 'Perfil Esquerdo',
-  tres_quartos: '3/4 (Opcional)',
+  tres_quartos: '3/4',
 };
 
 export default function CaseForm() {
@@ -196,11 +196,7 @@ export default function CaseForm() {
       return;
     }
 
-    const missingPhotos = REQUIRED_ANGLES.filter(angle => !photos[angle] && !existingPhotos[angle]);
-    if (missingPhotos.length > 0) {
-      toast.error(`Fotos obrigatórias faltando: ${missingPhotos.map(a => ANGLE_LABELS[a]).join(', ')}`);
-      return;
-    }
+    // Photos are optional - case can be created without photos
 
     if (!userId) {
       toast.error('Você precisa estar logado para criar um caso');
@@ -335,8 +331,9 @@ export default function CaseForm() {
     }
   };
 
-  const uploadedCount = REQUIRED_ANGLES.filter(angle => photos[angle] || existingPhotos[angle]).length;
-  const requiredCount = REQUIRED_ANGLES.length;
+  const allAngles = [...REQUIRED_ANGLES, ...OPTIONAL_ANGLES];
+  const uploadedCount = allAngles.filter(angle => photos[angle] || existingPhotos[angle]).length;
+  const totalCount = allAngles.length;
 
   return (
     <div className="p-6 max-w-4xl mx-auto animate-fade-in">
@@ -468,9 +465,9 @@ export default function CaseForm() {
             <CardTitle className="text-base">Fotos Padronizadas</CardTitle>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">
-                {uploadedCount}/{requiredCount} obrigatórias
+                {uploadedCount}/{totalCount} fotos
               </span>
-              {uploadedCount >= requiredCount && (
+              {uploadedCount > 0 && (
                 <Check className="h-4 w-4 text-success" />
               )}
             </div>
@@ -484,7 +481,7 @@ export default function CaseForm() {
                   label={ANGLE_LABELS[angle]}
                   file={photos[angle]}
                   existingUrl={existingPhotos[angle]}
-                  required={REQUIRED_ANGLES.includes(angle)}
+                  required={false}
                   onUpload={(file) => handlePhotoUpload(angle, file)}
                   onRemove={() => {
                     setPhotos(prev => ({ ...prev, [angle]: null }));
