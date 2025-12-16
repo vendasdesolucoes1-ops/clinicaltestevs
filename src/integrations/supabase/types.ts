@@ -277,6 +277,8 @@ export type Database = {
           custom_points: Json | null
           face_roi: Json | null
           id: string
+          image_url: string | null
+          job_id: string | null
           landmarks: Json | null
           landmarks_count: Json | null
           mean_deviation: number | null
@@ -301,6 +303,8 @@ export type Database = {
           custom_points?: Json | null
           face_roi?: Json | null
           id?: string
+          image_url?: string | null
+          job_id?: string | null
           landmarks?: Json | null
           landmarks_count?: Json | null
           mean_deviation?: number | null
@@ -325,6 +329,8 @@ export type Database = {
           custom_points?: Json | null
           face_roi?: Json | null
           id?: string
+          image_url?: string | null
+          job_id?: string | null
           landmarks?: Json | null
           landmarks_count?: Json | null
           mean_deviation?: number | null
