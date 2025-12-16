@@ -639,6 +639,34 @@ export default function Workbench() {
     }
   }, [createdVersion, caseData, clearCreatedVersion]);
 
+  // Handle photo selection from header - must be before conditional returns
+  const handlePhotoSelect = useCallback(async (url: string, photo: CasePhoto) => {
+    setCurrentImageUrl(url);
+    clearMesh();
+    setCurrentPhotoId(photo.id);
+    
+    if (analyzedPhotoIds.has(photo.id)) {
+      const { data: existingAnalysis } = await supabase
+        .from('facial_analyses')
+        .select('*')
+        .eq('photo_id', photo.id)
+        .maybeSingle();
+      
+      if (existingAnalysis && 
+          existingAnalysis.status === 'landmarks_ready' && 
+          Array.isArray(existingAnalysis.points) && 
+          existingAnalysis.points.length > 0) {
+        loadExistingAnalysis({
+          points: existingAnalysis.points as any,
+          faceROI: existingAnalysis.face_roi as any,
+          midlinePoints: Array.isArray(existingAnalysis.midline_points) ? existingAnalysis.midline_points : [],
+          customConnections: Array.isArray(existingAnalysis.custom_connections) ? existingAnalysis.custom_connections as any : [],
+        });
+        toast.info('Análise facial carregada');
+      }
+    }
+  }, [analyzedPhotoIds, clearMesh, loadExistingAnalysis]);
+
   if (isLoading) {
     return (
       <div className="h-[calc(100vh-3.5rem)] flex">
@@ -670,34 +698,6 @@ export default function Workbench() {
 
   const versionsA = caseData.versions.filter(v => v.type === 'A');
   const versionsB = caseData.versions.filter(v => v.type === 'B');
-
-  // Handle photo selection from header
-  const handlePhotoSelect = useCallback(async (url: string, photo: CasePhoto) => {
-    setCurrentImageUrl(url);
-    clearMesh();
-    setCurrentPhotoId(photo.id);
-    
-    if (analyzedPhotoIds.has(photo.id)) {
-      const { data: existingAnalysis } = await supabase
-        .from('facial_analyses')
-        .select('*')
-        .eq('photo_id', photo.id)
-        .maybeSingle();
-      
-      if (existingAnalysis && 
-          existingAnalysis.status === 'landmarks_ready' && 
-          Array.isArray(existingAnalysis.points) && 
-          existingAnalysis.points.length > 0) {
-        loadExistingAnalysis({
-          points: existingAnalysis.points as any,
-          faceROI: existingAnalysis.face_roi as any,
-          midlinePoints: Array.isArray(existingAnalysis.midline_points) ? existingAnalysis.midline_points : [],
-          customConnections: Array.isArray(existingAnalysis.custom_connections) ? existingAnalysis.custom_connections as any : [],
-        });
-        toast.info('Análise facial carregada');
-      }
-    }
-  }, [analyzedPhotoIds, clearMesh, loadExistingAnalysis]);
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex overflow-hidden">
