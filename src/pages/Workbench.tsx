@@ -747,7 +747,7 @@ export default function Workbench() {
               size="sm"
               className="gap-2"
               disabled={!currentImageUrl || currentImageUrl === '/placeholder.svg' || isAnalyzing}
-              onClick={() => caseData && triggerAnalysis(caseData.id, currentImageUrl)}
+              onClick={() => caseData && triggerAnalysis(caseData.id, currentImageUrl, currentPhotoId)}
             >
               {isAnalyzing ? (
                 <>
