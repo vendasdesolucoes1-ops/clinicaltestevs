@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   FolderOpen, 
@@ -11,8 +12,29 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getDashboardStats, mockJobs, type ClinicalCase } from '@/lib/mockData';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+
+interface DashboardStats {
+  activeCases: number;
+  recentCasesCount: number;
+  processingJobs: number;
+  recentExports: number;
+  recentCases: {
+    id: string;
+    codename: string;
+    type: 'queimadura' | 'trauma';
+    responsible: string;
+    versionsCount: number;
+  }[];
+}
+
+interface ProcessingJob {
+  id: string;
+  case_id: string;
+  progress: number;
+  status: string;
+}
 
 function StatCard({ 
   title, 
@@ -20,7 +42,8 @@ function StatCard({
   icon: Icon, 
   description,
   trend,
-  className 
+  className,
+  isLoading 
 }: { 
   title: string; 
   value: number | string; 
@@ -28,6 +51,7 @@ function StatCard({
   description?: string;
   trend?: string;
   className?: string;
+  isLoading?: boolean;
 }) {
   return (
     <Card className={cn("clinical-panel", className)}>
@@ -35,7 +59,11 @@ function StatCard({
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-3xl font-bold text-foreground mt-1 font-mono">{value}</p>
+            {isLoading ? (
+              <div className="h-9 w-16 bg-muted animate-pulse rounded mt-1" />
+            ) : (
+              <p className="text-3xl font-bold text-foreground mt-1 font-mono">{value}</p>
+            )}
             {description && (
               <p className="text-xs text-muted-foreground mt-1">{description}</p>
             )}
@@ -55,7 +83,7 @@ function StatCard({
   );
 }
 
-function CaseTypeTag({ type }: { type: ClinicalCase['type'] }) {
+function CaseTypeTag({ type }: { type: 'queimadura' | 'trauma' }) {
   return (
     <Badge 
       variant="outline" 
@@ -71,11 +99,7 @@ function CaseTypeTag({ type }: { type: ClinicalCase['type'] }) {
   );
 }
 
-function ProcessingJobCard() {
-  const job = mockJobs.find(j => j.status === 'processando');
-  
-  if (!job) return null;
-
+function ProcessingJobCard({ job }: { job: ProcessingJob }) {
   return (
     <Card className="clinical-panel border-warning/20 bg-warning/5">
       <CardContent className="p-4">
@@ -85,7 +109,7 @@ function ProcessingJobCard() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground truncate">
-              Simulação em processamento
+              Análise facial em processamento
             </p>
             <div className="flex items-center gap-2 mt-1">
               <div className="flex-1 h-1.5 bg-warning/20 rounded-full overflow-hidden">
@@ -97,7 +121,7 @@ function ProcessingJobCard() {
               <span className="text-xs font-mono text-warning">{job.progress}%</span>
             </div>
           </div>
-          <Link to={`/workbench/${job.caseId}`}>
+          <Link to={`/workbench/${job.case_id}`}>
             <Button variant="ghost" size="icon-sm">
               <ArrowRight className="h-4 w-4" />
             </Button>
@@ -109,7 +133,138 @@ function ProcessingJobCard() {
 }
 
 export default function Dashboard() {
-  const stats = getDashboardStats();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [processingJob, setProcessingJob] = useState<ProcessingJob | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Fetch all stats in parallel
+        const [
+          casesResult,
+          versionsResult,
+          processingJobsResult,
+          exportsResult,
+          analysisJobsResult
+        ] = await Promise.all([
+          // Active cases (status = 'ativo')
+          supabase
+            .from('clinical_cases')
+            .select(`
+              id, codename, type, status, created_at,
+              profiles:responsible_id(first_name, last_name)
+            `)
+            .eq('status', 'ativo')
+            .order('created_at', { ascending: false })
+            .limit(10),
+          
+          // Get version counts for cases
+          supabase
+            .from('case_versions')
+            .select('case_id'),
+          
+          // Processing simulation jobs
+          supabase
+            .from('simulation_jobs')
+            .select('id, case_id, progress, status')
+            .eq('status', 'processando')
+            .limit(1),
+          
+          // Recent exports (this month)
+          supabase
+            .from('case_exports')
+            .select('id')
+            .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
+          
+          // Processing facial analysis jobs
+          supabase
+            .from('facial_analysis_jobs')
+            .select('job_id, case_id, status')
+            .in('status', ['pending', 'processing'])
+            .limit(1)
+        ]);
+
+        // Calculate version counts per case
+        const versionCounts: Record<string, number> = {};
+        if (versionsResult.data) {
+          versionsResult.data.forEach(v => {
+            versionCounts[v.case_id] = (versionCounts[v.case_id] || 0) + 1;
+          });
+        }
+
+        // Map recent cases
+        const recentCases = (casesResult.data || []).slice(0, 5).map(c => {
+          const profile = c.profiles as { first_name: string | null; last_name: string | null } | null;
+          return {
+            id: c.id,
+            codename: c.codename,
+            type: c.type as 'queimadura' | 'trauma',
+            responsible: profile 
+              ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Não atribuído'
+              : 'Não atribuído',
+            versionsCount: versionCounts[c.id] || 0
+          };
+        });
+
+        // Calculate stats
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        
+        const recentCasesCount = (casesResult.data || []).filter(c => 
+          new Date(c.created_at) >= sevenDaysAgo
+        ).length;
+
+        // Check for processing jobs (simulation or facial analysis)
+        let processingJobsCount = 0;
+        let activeJob: ProcessingJob | null = null;
+
+        if (processingJobsResult.data && processingJobsResult.data.length > 0) {
+          processingJobsCount++;
+          const job = processingJobsResult.data[0];
+          activeJob = {
+            id: job.id,
+            case_id: job.case_id,
+            progress: job.progress || 50,
+            status: job.status
+          };
+        }
+
+        if (analysisJobsResult.data && analysisJobsResult.data.length > 0) {
+          processingJobsCount++;
+          if (!activeJob) {
+            const job = analysisJobsResult.data[0];
+            activeJob = {
+              id: job.job_id,
+              case_id: job.case_id,
+              progress: job.status === 'pending' ? 25 : 50,
+              status: job.status
+            };
+          }
+        }
+
+        setStats({
+          activeCases: casesResult.data?.length || 0,
+          recentCasesCount,
+          processingJobs: processingJobsCount,
+          recentExports: exportsResult.data?.length || 0,
+          recentCases
+        });
+
+        setProcessingJob(activeJob);
+      } catch (error) {
+        console.error('Erro ao carregar dashboard:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   return (
     <div className="p-6 max-w-7xl mx-auto animate-fade-in">
@@ -133,34 +288,38 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard 
           title="Casos Ativos" 
-          value={stats.activeCases}
+          value={stats?.activeCases ?? 0}
           icon={FolderOpen}
           description="Em acompanhamento"
+          isLoading={isLoading}
         />
         <StatCard 
           title="Casos Recentes" 
-          value={stats.recentCases.length}
+          value={stats?.recentCasesCount ?? 0}
           icon={Clock}
           description="Últimos 7 dias"
+          isLoading={isLoading}
         />
         <StatCard 
           title="Em Processamento" 
-          value={stats.processingJobs}
+          value={stats?.processingJobs ?? 0}
           icon={Loader2}
-          description="Simulações ativas"
+          description="Análises ativas"
+          isLoading={isLoading}
         />
         <StatCard 
           title="Exportações" 
-          value={stats.recentExports}
+          value={stats?.recentExports ?? 0}
           icon={Download}
           description="Este mês"
+          isLoading={isLoading}
         />
       </div>
 
       {/* Processing job alert */}
-      {mockJobs.some(j => j.status === 'processando') && (
+      {processingJob && (
         <div className="mb-8">
-          <ProcessingJobCard />
+          <ProcessingJobCard job={processingJob} />
         </div>
       )}
 
@@ -177,33 +336,57 @@ export default function Dashboard() {
             </Link>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="space-y-3">
-              {stats.recentCases.map((caseItem) => (
-                <Link 
-                  key={caseItem.id} 
-                  to={`/workbench/${caseItem.id}`}
-                  className="block"
-                >
-                  <div className="flex items-center gap-4 p-3 rounded-lg hover:bg-secondary/50 transition-colors group">
-                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
-                      <FolderOpen className="h-5 w-5 text-muted-foreground" />
+            {isLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="flex items-center gap-4 p-3">
+                    <div className="w-10 h-10 rounded-lg bg-muted animate-pulse" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                      <div className="h-3 w-24 bg-muted animate-pulse rounded" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-foreground truncate">
-                          {caseItem.codename}
-                        </span>
-                        <CaseTypeTag type={caseItem.type} />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {caseItem.responsible} • {caseItem.versions.length} versões
-                      </p>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
+                ))}
+              </div>
+            ) : stats?.recentCases.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Nenhum caso encontrado</p>
+                <Link to="/cases/new">
+                  <Button variant="link" size="sm" className="mt-2">
+                    Criar primeiro caso
+                  </Button>
                 </Link>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {stats?.recentCases.map((caseItem) => (
+                  <Link 
+                    key={caseItem.id} 
+                    to={`/workbench/${caseItem.id}`}
+                    className="block"
+                  >
+                    <div className="flex items-center gap-4 p-3 rounded-lg hover:bg-secondary/50 transition-colors group">
+                      <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
+                        <FolderOpen className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm text-foreground truncate">
+                            {caseItem.codename}
+                          </span>
+                          <CaseTypeTag type={caseItem.type} />
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {caseItem.responsible} • {caseItem.versionsCount} versões
+                        </p>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
