@@ -13,12 +13,20 @@ export interface MediaPipeMeshData {
 }
 
 export interface MediaPipeWebhookResponse {
-  job_id: string;
-  case_id: string;
+  job_id?: string;
+  case_id?: string;
   status: 'success' | 'completed' | 'failed';
   image_url?: string;
-  face_mesh?: MediaPipeMeshData;
   error_message?: string;
+  
+  // Wrapped format (preferred)
+  face_mesh?: MediaPipeMeshData;
+  
+  // Flat format (n8n current output)
+  landmarks?: MediaPipePoint[];
+  points?: MediaPipePoint[];
+  connections?: [number, number][];
+  landmarks_count?: number;
 }
 
 // Conexões padrão do MediaPipe Face Mesh (468 pontos)

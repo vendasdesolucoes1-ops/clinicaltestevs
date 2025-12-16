@@ -5,7 +5,8 @@ import { N8N_FACIAL_ANALYSIS_WEBHOOK, POLLING_INTERVAL_MS, MAX_POLLING_ATTEMPTS 
 import { toast } from 'sonner';
 import type { FacialMeshData, FacialPoint, MeshDensity, FaceROI, AnatomicalRegion } from '@/types/facialLandmarks';
 import { getConnectionsByDensity } from '@/types/facialLandmarks';
-import type { MediaPipeMeshData, MediaPipeWebhookResponse } from '@/types/mediapipeMesh';
+import type { MediaPipeMeshData, MediaPipeWebhookResponse, MediaPipePoint } from '@/types/mediapipeMesh';
+import { MEDIAPIPE_DENSE_CONNECTIONS } from '@/types/mediapipeMesh';
 
 export type AnalysisJobStatus = 'idle' | 'processing' | 'completed' | 'failed';
 
@@ -371,22 +372,77 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       // Try to parse immediate response with MediaPipe data
       try {
         const responseText = await response.text();
-        console.log('[Analysis] Response body:', responseText);
+        console.log('[Analysis] Response body (raw):', responseText.substring(0, 500));
         
         if (responseText) {
           const responseData = JSON.parse(responseText) as MediaPipeWebhookResponse;
-          console.log('[Analysis] Parsed response:', responseData);
+          console.log('[Analysis] Parsed response status:', responseData.status);
+          console.log('[Analysis] face_mesh present:', !!responseData.face_mesh);
+          console.log('[Analysis] landmarks present:', !!responseData.landmarks);
+          console.log('[Analysis] points present:', !!responseData.points);
           
-          // Check for face_mesh in response (n8n returns synchronously)
-          if ((responseData.status === 'success' || responseData.status === 'completed') && responseData.face_mesh) {
-            console.log('[Analysis] Immediate mesh data received!', responseData.face_mesh.points?.length, 'points');
-            setMediaPipeMeshData(responseData.face_mesh);
-            setAnalysisJob(prev => prev ? { ...prev, status: 'completed' } : null);
-            toast.success('Mesh facial carregado!', {
-              description: `${responseData.face_mesh.points?.length || 0} landmarks detectados.`
-            });
-            return;
+          // Check if status indicates success
+          const isSuccess = responseData.status === 'success' || responseData.status === 'completed';
+          
+          // Try to extract mesh data from various formats
+          let meshPoints: MediaPipePoint[] | null = null;
+          let meshConnections: [number, number][] = [];
+          
+          // Format 1: Wrapped in face_mesh (preferred)
+          if (responseData.face_mesh?.points && Array.isArray(responseData.face_mesh.points)) {
+            meshPoints = responseData.face_mesh.points;
+            meshConnections = responseData.face_mesh.connections || [];
+            console.log('[Analysis] Using face_mesh.points format');
           }
+          // Format 2: Flat landmarks array (n8n current output)
+          else if (responseData.landmarks && Array.isArray(responseData.landmarks)) {
+            meshPoints = responseData.landmarks;
+            meshConnections = responseData.connections || [];
+            console.log('[Analysis] Using flat landmarks format');
+          }
+          // Format 3: Flat points array
+          else if (responseData.points && Array.isArray(responseData.points)) {
+            meshPoints = responseData.points;
+            meshConnections = responseData.connections || [];
+            console.log('[Analysis] Using flat points format');
+          }
+          
+          if (isSuccess && meshPoints && meshPoints.length > 0) {
+            // Filter out null/undefined/invalid points
+            const validPoints = meshPoints.filter((p): p is MediaPipePoint => 
+              p !== null && 
+              p !== undefined && 
+              typeof p.id === 'number' && 
+              typeof p.x === 'number' && 
+              typeof p.y === 'number'
+            );
+            
+            console.log('[Analysis] Valid points:', validPoints.length, 'of', meshPoints.length);
+            
+            // Use default connections if none provided
+            const finalConnections = meshConnections.length > 0 
+              ? meshConnections.filter(c => Array.isArray(c) && c.length === 2)
+              : MEDIAPIPE_DENSE_CONNECTIONS;
+            
+            console.log('[Analysis] Using connections:', finalConnections.length);
+            
+            if (validPoints.length > 0) {
+              const finalMeshData: MediaPipeMeshData = {
+                points: validPoints,
+                connections: finalConnections,
+              };
+              
+              setMediaPipeMeshData(finalMeshData);
+              setAnalysisJob(prev => prev ? { ...prev, status: 'completed' } : null);
+              toast.success('Mesh facial carregado!', {
+                description: `${validPoints.length} landmarks detectados.`
+              });
+              console.log('[Analysis] SUCCESS - Mesh rendered with', validPoints.length, 'points');
+              return;
+            }
+          }
+          
+          console.log('[Analysis] No valid mesh data in response, starting polling...');
         }
       } catch (parseError) {
         console.log('[Analysis] Response is not JSON, starting polling...', parseError);
