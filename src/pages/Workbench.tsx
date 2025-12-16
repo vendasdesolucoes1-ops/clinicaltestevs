@@ -96,6 +96,7 @@ export default function Workbench() {
     triggerAnalysis,
     triggerSimulation,
     retryAnalysis,
+    cancelAnalysis,
     createdVersion,
     clearCreatedVersion,
   } = useN8nFacialAnalysis();
@@ -859,6 +860,7 @@ export default function Workbench() {
           <AnalysisStatusBar 
             status={analysisJob.status} 
             onRetry={retryAnalysis}
+            onCancel={cancelAnalysis}
           />
         )}
 

@@ -42,6 +42,7 @@ interface UseN8nFacialAnalysisReturn {
   triggerAnalysis: (caseId: string, imageUrl: string, photoId?: string) => Promise<void>;
   triggerSimulation: (caseId: string, imageUrl: string, targetVersion: 'A' | 'B', photoId?: string) => Promise<void>;
   retryAnalysis: () => Promise<void>;
+  cancelAnalysis: () => void;
   clearJob: () => void;
   
   // Created version after simulation
@@ -492,7 +493,18 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     await triggerAnalysis(caseId, imageUrl, photoId);
   }, [triggerAnalysis]);
 
-  // Clear job state
+  // Cancel analysis (user-initiated)
+  const cancelAnalysis = useCallback(() => {
+    stopPolling();
+    setAnalysisJob(null);
+    isSimulationModeRef.current = false;
+    targetVersionRef.current = null;
+    toast.info('Análise cancelada', {
+      description: 'O processamento foi interrompido pelo usuário.'
+    });
+  }, [stopPolling]);
+
+  // Clear job state (silent)
   const clearJob = useCallback(() => {
     stopPolling();
     setAnalysisJob(null);
@@ -519,6 +531,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     triggerAnalysis,
     triggerSimulation,
     retryAnalysis,
+    cancelAnalysis,
     clearJob,
     createdVersion,
     clearCreatedVersion,
