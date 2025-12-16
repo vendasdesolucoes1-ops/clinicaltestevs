@@ -298,10 +298,15 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
     midlinePoints?: string[];
     customConnections?: FacialConnection[];
   }) => {
-    setPoints(data.points);
+    // Validate arrays before setting state
+    const validPoints = Array.isArray(data.points) ? data.points : [];
+    const validMidlinePoints = Array.isArray(data.midlinePoints) ? data.midlinePoints : [];
+    const validCustomConnections = Array.isArray(data.customConnections) ? data.customConnections : [];
+    
+    setPoints(validPoints.length > 0 ? validPoints : null);
     if (data.faceROI) setFaceROI(data.faceROI);
-    if (data.midlinePoints) setMidlinePoints(data.midlinePoints);
-    if (data.customConnections) setCustomConnections(data.customConnections);
+    setMidlinePoints(validMidlinePoints);
+    setCustomConnections(validCustomConnections);
   }, []);
 
   return {

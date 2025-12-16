@@ -101,12 +101,21 @@ export const FacialMesh = ({
       return;
     }
 
+    // Validate meshData has valid arrays
+    const points = Array.isArray(meshData.points) ? meshData.points : [];
+    const connections = Array.isArray(meshData.connections) ? meshData.connections : [];
+
+    if (points.length === 0) {
+      clearMesh();
+      return;
+    }
+
     clearMesh();
 
     const pointsMap = new Map<string, { x: number; y: number }>();
     
     // Converter coordenadas normalizadas para coordenadas do canvas
-    meshData.points.forEach(point => {
+    points.forEach(point => {
       const canvasX = imageLeft + point.x * imageWidth;
       const canvasY = imageTop + point.y * imageHeight;
       pointsMap.set(point.id, { x: canvasX, y: canvasY });
@@ -134,7 +143,7 @@ export const FacialMesh = ({
     }
 
     // Desenhar as linhas de conexão
-    meshData.connections.forEach(conn => {
+    connections.forEach(conn => {
       const from = pointsMap.get(conn.from);
       const to = pointsMap.get(conn.to);
       
@@ -164,7 +173,7 @@ export const FacialMesh = ({
     });
 
     // Desenhar os pontos (por cima das linhas)
-    meshData.points.forEach(point => {
+    points.forEach(point => {
       const coords = pointsMap.get(point.id);
       if (!coords) return;
 
@@ -214,8 +223,9 @@ export const FacialMesh = ({
       if (!target || !(target as any).pointId) return;
 
       const pointId = (target as any).pointId;
+      const connections = meshData && Array.isArray(meshData.connections) ? meshData.connections : [];
 
-      meshData?.connections.forEach(conn => {
+      connections.forEach(conn => {
         if (conn.from === pointId || conn.to === pointId) {
           const lineObj = meshObjectsRef.current.find(
             obj => (obj as any).customName === `mesh_line_${conn.from}_${conn.to}`
