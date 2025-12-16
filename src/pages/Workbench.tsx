@@ -231,13 +231,17 @@ export default function Workbench() {
             .eq('photo_id', frontPhoto.id)
             .maybeSingle();
 
-          if (existingAnalysis && existingAnalysis.points) {
+          // RUNTIME SAFETY: Only load analysis if status is landmarks_ready AND points is a valid array
+          if (existingAnalysis && 
+              existingAnalysis.status === 'landmarks_ready' && 
+              Array.isArray(existingAnalysis.points) && 
+              existingAnalysis.points.length > 0) {
             // Load existing mesh data
             loadExistingAnalysis({
               points: existingAnalysis.points as any,
               faceROI: existingAnalysis.face_roi as any,
-              midlinePoints: existingAnalysis.midline_points || [],
-              customConnections: existingAnalysis.custom_connections as any,
+              midlinePoints: Array.isArray(existingAnalysis.midline_points) ? existingAnalysis.midline_points : [],
+              customConnections: Array.isArray(existingAnalysis.custom_connections) ? existingAnalysis.custom_connections as any : [],
             });
             toast.info('Análise facial carregada');
           }
@@ -698,12 +702,16 @@ export default function Workbench() {
                         .eq('photo_id', selectedPhoto.id)
                         .maybeSingle();
                       
-                      if (existingAnalysis && existingAnalysis.points) {
+                      // RUNTIME SAFETY: Only load if status is landmarks_ready and points is a valid array
+                      if (existingAnalysis && 
+                          existingAnalysis.status === 'landmarks_ready' && 
+                          Array.isArray(existingAnalysis.points) && 
+                          existingAnalysis.points.length > 0) {
                         loadExistingAnalysis({
                           points: existingAnalysis.points as any,
                           faceROI: existingAnalysis.face_roi as any,
-                          midlinePoints: existingAnalysis.midline_points || [],
-                          customConnections: existingAnalysis.custom_connections as any,
+                          midlinePoints: Array.isArray(existingAnalysis.midline_points) ? existingAnalysis.midline_points : [],
+                          customConnections: Array.isArray(existingAnalysis.custom_connections) ? existingAnalysis.custom_connections as any : [],
                         });
                         toast.info('Análise facial carregada');
                       }

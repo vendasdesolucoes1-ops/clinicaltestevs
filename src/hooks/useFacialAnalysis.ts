@@ -54,14 +54,17 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
 
   // Compute meshData based on points, density and custom connections
+  // RUNTIME SAFETY: Only return meshData if points is a valid non-empty array
   const meshData = useMemo((): FacialMeshData | null => {
-    if (!points) return null;
-    const baseConnections = getConnectionsByDensity(meshDensity, points, midlinePoints);
+    if (!points || !Array.isArray(points) || points.length === 0) return null;
+    const safeCustomConnections = Array.isArray(customConnections) ? customConnections : [];
+    const safeMidlinePoints = Array.isArray(midlinePoints) ? midlinePoints : [];
+    const baseConnections = getConnectionsByDensity(meshDensity, points, safeMidlinePoints);
     return {
       points,
-      connections: [...baseConnections, ...customConnections],
+      connections: [...baseConnections, ...safeCustomConnections],
       faceROI: faceROI || undefined,
-      midlinePoints,
+      midlinePoints: safeMidlinePoints,
     };
   }, [points, meshDensity, customConnections, faceROI, midlinePoints]);
 

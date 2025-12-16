@@ -21,9 +21,12 @@ export const useSymmetryAnalysis = (meshData: FacialMeshData | null): SymmetryRe
     // Encontrar o eixo central usando pontos da linha média se disponíveis
     let centerX = 0.5;
     
-    if (meshData.midlinePoints && meshData.midlinePoints.length > 0) {
+    // RUNTIME SAFETY: Validate midlinePoints is an array
+    const safeMidlinePoints = Array.isArray(meshData.midlinePoints) ? meshData.midlinePoints : [];
+    
+    if (safeMidlinePoints.length > 0) {
       const midlineXValues: number[] = [];
-      meshData.midlinePoints.forEach(id => {
+      safeMidlinePoints.forEach(id => {
         const point = pointsMap.get(id);
         if (point) {
           midlineXValues.push(point.x);

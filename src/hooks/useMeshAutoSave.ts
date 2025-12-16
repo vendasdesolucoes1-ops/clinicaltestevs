@@ -25,11 +25,16 @@ export function useMeshAutoSave({
   const saveToDatabase = useCallback(async () => {
     if (!caseId || !photoId || !meshData || !enabled) return;
     if (isSavingRef.current) return;
+    
+    // RUNTIME SAFETY: Validate meshData has valid arrays before saving
+    if (!Array.isArray(meshData.points) || meshData.points.length === 0) return;
+    
+    const safeConnections = Array.isArray(meshData.connections) ? meshData.connections : [];
 
     // Create a hash of current state to avoid duplicate saves
     const currentHash = JSON.stringify({
       points: meshData.points,
-      customConnections: meshData.connections?.filter(c => c.type === 'custom'),
+      customConnections: safeConnections.filter(c => c.type === 'custom'),
     });
 
     if (currentHash === lastSavedRef.current) return;
@@ -46,7 +51,8 @@ export function useMeshAutoSave({
 
       const pointsJson = JSON.parse(JSON.stringify(meshData.points));
       const faceRoiJson = meshData.faceROI ? JSON.parse(JSON.stringify(meshData.faceROI)) : null;
-      const customConnectionsJson = JSON.parse(JSON.stringify(meshData.connections?.filter(c => c.type === 'custom') || []));
+      const customConnectionsJson = JSON.parse(JSON.stringify(safeConnections.filter(c => c.type === 'custom')));
+      const safeMidlinePoints = Array.isArray(meshData.midlinePoints) ? meshData.midlinePoints : [];
 
       if (existing) {
         // Update existing analysis
@@ -55,7 +61,7 @@ export function useMeshAutoSave({
           .update({
             points: pointsJson,
             face_roi: faceRoiJson,
-            midline_points: meshData.midlinePoints || [],
+            midline_points: safeMidlinePoints,
             custom_connections: customConnectionsJson,
             updated_at: new Date().toISOString(),
           })
@@ -71,7 +77,7 @@ export function useMeshAutoSave({
             photo_id: photoId,
             points: pointsJson,
             face_roi: faceRoiJson,
-            midline_points: meshData.midlinePoints || [],
+            midline_points: safeMidlinePoints,
             custom_connections: customConnectionsJson,
           }]);
 
