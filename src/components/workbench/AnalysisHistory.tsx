@@ -111,11 +111,16 @@ export function AnalysisHistory({ caseId, onLoadAnalysis, onAnalysisDeleted, cla
   }, [caseId, isOpen]);
 
   const handleLoadAnalysis = (analysis: AnalysisRecord) => {
+    // RUNTIME SAFETY: Validate all arrays before passing to onLoadAnalysis
+    const safePoints = Array.isArray(analysis.points) ? analysis.points : [];
+    const safeMidlinePoints = Array.isArray(analysis.midline_points) ? analysis.midline_points : [];
+    const safeCustomConnections = Array.isArray(analysis.custom_connections) ? analysis.custom_connections : [];
+    
     onLoadAnalysis({
-      points: analysis.points || [],
+      points: safePoints,
       faceROI: analysis.face_roi,
-      midlinePoints: analysis.midline_points || [],
-      customConnections: analysis.custom_connections || [],
+      midlinePoints: safeMidlinePoints,
+      customConnections: safeCustomConnections,
     });
   };
 

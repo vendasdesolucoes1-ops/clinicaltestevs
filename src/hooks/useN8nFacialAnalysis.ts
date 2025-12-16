@@ -97,18 +97,25 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     if (data && data.length > 0) {
       const analysis = data[0];
       
-      // Process points
-      const points: FacialPoint[] = (analysis.points as any[])?.map((p: any) => ({
+      // RUNTIME SAFETY: Only process if status is landmarks_ready and points is a valid array
+      const rawPoints = analysis.points;
+      if (analysis.status !== 'landmarks_ready' || !Array.isArray(rawPoints) || rawPoints.length === 0) {
+        console.log('Analysis not ready or no valid points:', analysis.status);
+        return null;
+      }
+
+      // Process points with validation
+      const points: FacialPoint[] = rawPoints.map((p: any) => ({
         id: p.id,
         name: p.name || p.id,
         x: p.x,
         y: p.y,
         region: p.region || 'midline' as AnatomicalRegion,
-        adjacentRegions: p.adjacentRegions || [],
-      })) || [];
+        adjacentRegions: Array.isArray(p.adjacentRegions) ? p.adjacentRegions : [],
+      }));
 
       const roi: FaceROI = (analysis.face_roi as any) || { x: 0, y: 0, width: 1, height: 1 };
-      const midlinePoints: string[] = analysis.midline_points || [];
+      const midlinePoints: string[] = Array.isArray(analysis.midline_points) ? analysis.midline_points : [];
 
       setFaceROI(roi);
 
