@@ -1,7 +1,7 @@
 // Hook for asynchronous facial analysis via n8n workflow
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { N8N_WEBHOOK_URL, POLLING_INTERVAL_MS, MAX_POLLING_ATTEMPTS } from '@/lib/config';
+import { N8N_FACIAL_ANALYSIS_WEBHOOK, POLLING_INTERVAL_MS, MAX_POLLING_ATTEMPTS } from '@/lib/config';
 import { toast } from 'sonner';
 import type { FacialMeshData, FacialPoint, MeshDensity, FaceROI, AnatomicalRegion } from '@/types/facialLandmarks';
 import { getConnectionsByDensity } from '@/types/facialLandmarks';
@@ -285,7 +285,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       }
 
       // Send POST to n8n webhook
-      const response = await fetch(N8N_WEBHOOK_URL, {
+      const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
