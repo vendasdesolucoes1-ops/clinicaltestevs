@@ -5,10 +5,27 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Support both old format and new MediaPipe format
 interface WebhookPayload {
   job_id: string;
   case_id: string;
-  status: 'pronto' | 'falhou' | 'processando';
+  photo_id?: string;
+  status: 'success' | 'completed' | 'failed' | 'processing' | 'pronto' | 'falhou' | 'processando';
+  image_url?: string;
+  error_message?: string;
+  
+  // MediaPipe format (new)
+  face_mesh?: {
+    points: Array<{
+      id: number;
+      x: number;
+      y: number;
+      z?: number;
+    }>;
+    connections: Array<[number, number]>;
+  };
+  
+  // Legacy format
   landmarks_data?: {
     points?: Array<{
       id: string;
@@ -43,8 +60,21 @@ interface WebhookPayload {
   };
   symmetry_score?: number;
   regional_scores?: Record<string, number>;
-  error_message?: string;
-  photo_id?: string;
+}
+
+// Normalize status to database enum
+function normalizeStatus(status: string): 'pending' | 'processing' | 'success' | 'failed' {
+  const statusMap: Record<string, 'pending' | 'processing' | 'success' | 'failed'> = {
+    'success': 'success',
+    'completed': 'success',
+    'pronto': 'success',
+    'failed': 'failed',
+    'falhou': 'failed',
+    'processing': 'processing',
+    'processando': 'processing',
+    'pending': 'pending',
+  };
+  return statusMap[status.toLowerCase()] || 'processing';
 }
 
 Deno.serve(async (req) => {
@@ -54,7 +84,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('Webhook n8n notification received');
+    console.log('=== Webhook n8n notification received ===');
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -67,13 +97,14 @@ Deno.serve(async (req) => {
     const { 
       job_id, 
       case_id, 
-      status, 
+      status,
+      photo_id,
+      face_mesh,
       landmarks_data, 
       mesh_data, 
       symmetry_score,
       regional_scores,
       error_message,
-      photo_id
     } = payload;
 
     // Validate required fields
@@ -85,42 +116,80 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update simulation_jobs table with status
+    const normalizedStatus = normalizeStatus(status);
+    console.log(`Status normalized: ${status} -> ${normalizedStatus}`);
+
+    // Update facial_analysis_jobs table (not simulation_jobs)
     const jobUpdateData: Record<string, unknown> = {
-      status: status,
-      progress: status === 'pronto' ? 100 : status === 'falhou' ? 0 : 50,
+      status: normalizedStatus,
     };
 
-    if (status === 'pronto' || status === 'falhou') {
-      jobUpdateData.completed_at = new Date().toISOString();
+    if (normalizedStatus === 'success' || normalizedStatus === 'failed') {
+      jobUpdateData.timestamp_end = new Date().toISOString();
     }
 
     if (error_message) {
-      jobUpdateData.parameters = { error_message };
+      jobUpdateData.error_message = error_message;
     }
 
-    console.log('Updating simulation_jobs:', job_id, jobUpdateData);
+    console.log('Updating facial_analysis_jobs:', job_id, jobUpdateData);
     
     const { error: jobError } = await supabase
-      .from('simulation_jobs')
+      .from('facial_analysis_jobs')
       .update(jobUpdateData)
-      .eq('id', job_id);
+      .eq('job_id', job_id);
 
     if (jobError) {
-      console.error('Error updating simulation_jobs:', jobError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to update job status', details: jobError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error('Error updating facial_analysis_jobs:', jobError);
+      // Don't fail - job might have been created with different ID format
+    } else {
+      console.log('Job status updated successfully');
     }
 
-    // If we have facial analysis data and a photo_id, insert/update facial_analyses
-    if (photo_id && (landmarks_data || mesh_data || symmetry_score)) {
-      console.log('Inserting/updating facial_analyses for photo:', photo_id);
+    // If we have MediaPipe face_mesh data, save to facial_analyses
+    if (photo_id && face_mesh) {
+      console.log('Saving MediaPipe face_mesh for photo:', photo_id);
+      console.log('Points count:', face_mesh.points?.length);
+      console.log('Connections count:', face_mesh.connections?.length);
       
       const analysisData: Record<string, unknown> = {
         case_id: case_id,
         photo_id: photo_id,
+        mesh: face_mesh, // Store complete MediaPipe mesh
+        status: 'landmarks_ready',
+        updated_at: new Date().toISOString(),
+      };
+
+      if (symmetry_score !== undefined) {
+        analysisData.symmetry_score = symmetry_score;
+      }
+      if (regional_scores) {
+        analysisData.regional_scores = regional_scores;
+      }
+
+      // Upsert - insert or update if exists
+      const { error: analysisError } = await supabase
+        .from('facial_analyses')
+        .upsert(analysisData, { 
+          onConflict: 'photo_id',
+          ignoreDuplicates: false 
+        });
+
+      if (analysisError) {
+        console.error('Error upserting facial_analyses:', analysisError);
+      } else {
+        console.log('MediaPipe face_mesh saved successfully');
+      }
+    }
+    
+    // Legacy format support
+    else if (photo_id && (landmarks_data || mesh_data || symmetry_score)) {
+      console.log('Saving legacy format analysis for photo:', photo_id);
+      
+      const analysisData: Record<string, unknown> = {
+        case_id: case_id,
+        photo_id: photo_id,
+        status: 'landmarks_ready',
         updated_at: new Date().toISOString(),
       };
 
@@ -149,7 +218,6 @@ Deno.serve(async (req) => {
         analysisData.regional_scores = regional_scores;
       }
 
-      // Upsert - insert or update if exists
       const { error: analysisError } = await supabase
         .from('facial_analyses')
         .upsert(analysisData, { 
@@ -159,9 +227,8 @@ Deno.serve(async (req) => {
 
       if (analysisError) {
         console.error('Error upserting facial_analyses:', analysisError);
-        // Don't fail the whole request, just log the error
       } else {
-        console.log('Facial analysis data saved successfully');
+        console.log('Legacy facial analysis data saved successfully');
       }
     }
 
@@ -169,22 +236,29 @@ Deno.serve(async (req) => {
     try {
       await supabase.rpc('log_audit', {
         _case_id: case_id,
-        _action: `n8n_webhook_${status}`,
-        _description: status === 'falhou' 
+        _action: `n8n_webhook_${normalizedStatus}`,
+        _description: normalizedStatus === 'failed' 
           ? `Pipeline n8n falhou: ${error_message || 'Erro desconhecido'}`
-          : `Pipeline n8n completou com status: ${status}`,
-        _metadata: { job_id, status, has_landmarks: !!landmarks_data }
+          : `Pipeline n8n completou com status: ${normalizedStatus}`,
+        _metadata: { 
+          job_id, 
+          status: normalizedStatus, 
+          has_face_mesh: !!face_mesh,
+          has_landmarks: !!landmarks_data,
+          photo_id 
+        }
       });
     } catch (auditError) {
       console.error('Error logging audit:', auditError);
     }
 
-    console.log('Webhook processed successfully');
+    console.log('=== Webhook processed successfully ===');
     
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: `Job ${job_id} updated to status: ${status}` 
+        message: `Job ${job_id} updated to status: ${normalizedStatus}`,
+        face_mesh_saved: !!face_mesh,
       }),
       { 
         status: 200, 

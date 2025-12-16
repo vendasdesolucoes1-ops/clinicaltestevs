@@ -15,7 +15,7 @@ export interface MediaPipeMeshData {
 export interface MediaPipeWebhookResponse {
   job_id: string;
   case_id: string;
-  status: 'success' | 'failed';
+  status: 'success' | 'completed' | 'failed';
   image_url?: string;
   face_mesh?: MediaPipeMeshData;
   error_message?: string;
