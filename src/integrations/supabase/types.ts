@@ -262,12 +262,15 @@ export type Database = {
           custom_points: Json | null
           face_roi: Json | null
           id: string
+          landmarks: Json | null
+          landmarks_count: Json | null
           mean_deviation: number | null
+          mesh: Json | null
           midline_points: string[] | null
           midline_x: number | null
           mode: string | null
           paired_points: number | null
-          photo_id: string
+          photo_id: string | null
           points: Json | null
           regional_scores: Json | null
           status: string | null
@@ -283,12 +286,15 @@ export type Database = {
           custom_points?: Json | null
           face_roi?: Json | null
           id?: string
+          landmarks?: Json | null
+          landmarks_count?: Json | null
           mean_deviation?: number | null
+          mesh?: Json | null
           midline_points?: string[] | null
           midline_x?: number | null
           mode?: string | null
           paired_points?: number | null
-          photo_id: string
+          photo_id?: string | null
           points?: Json | null
           regional_scores?: Json | null
           status?: string | null
@@ -304,12 +310,15 @@ export type Database = {
           custom_points?: Json | null
           face_roi?: Json | null
           id?: string
+          landmarks?: Json | null
+          landmarks_count?: Json | null
           mean_deviation?: number | null
+          mesh?: Json | null
           midline_points?: string[] | null
           midline_x?: number | null
           mode?: string | null
           paired_points?: number | null
-          photo_id?: string
+          photo_id?: string | null
           points?: Json | null
           regional_scores?: Json | null
           status?: string | null

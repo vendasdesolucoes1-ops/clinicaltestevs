@@ -14,7 +14,7 @@ const REGION_LABELS: Record<string, string> = {
 
 export const useSymmetryAnalysis = (meshData: FacialMeshData | null): SymmetryResult | null => {
   return useMemo(() => {
-    if (!meshData || meshData.points.length === 0) return null;
+    if (!meshData || !Array.isArray(meshData.points) || meshData.points.length === 0) return null;
 
     const pointsMap = new Map(meshData.points.map(p => [p.id, p]));
     
