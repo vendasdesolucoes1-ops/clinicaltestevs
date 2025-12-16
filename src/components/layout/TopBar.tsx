@@ -9,7 +9,10 @@ import {
   Moon, 
   Sun,
   ChevronDown,
-  Bell
+  Bell,
+  CheckCircle2,
+  AlertCircle,
+  Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,8 +23,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { currentUser } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface TopBarProps {
   onThemeToggle: () => void;
@@ -107,16 +116,91 @@ export function TopBar({ onThemeToggle, isDark }: TopBarProps) {
         <Button 
           variant="ghost" 
           size="icon-sm"
-          onClick={onThemeToggle}
+          onClick={() => {
+            onThemeToggle();
+            toast.success(isDark ? 'Tema claro ativado' : 'Tema escuro ativado');
+          }}
           className="text-muted-foreground"
         >
           {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
 
-        <Button variant="ghost" size="icon-sm" className="text-muted-foreground relative">
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon-sm" className="text-muted-foreground relative">
+              <Bell className="h-4 w-4" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 p-0">
+            <div className="p-3 border-b border-border">
+              <h4 className="font-semibold text-sm">Notificações</h4>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              <div 
+                className="p-3 hover:bg-secondary/50 cursor-pointer border-b border-border/50"
+                onClick={() => {
+                  toast.info('Notificação visualizada');
+                }}
+              >
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="h-4 w-4 text-success" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Análise concluída</p>
+                    <p className="text-xs text-muted-foreground">Caso "Laura" foi processado com sucesso</p>
+                    <p className="text-xs text-muted-foreground mt-1">Há 5 min</p>
+                  </div>
+                </div>
+              </div>
+              <div 
+                className="p-3 hover:bg-secondary/50 cursor-pointer border-b border-border/50"
+                onClick={() => {
+                  toast.info('Notificação visualizada');
+                }}
+              >
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-warning/10 flex items-center justify-center shrink-0">
+                    <AlertCircle className="h-4 w-4 text-warning" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Atenção necessária</p>
+                    <p className="text-xs text-muted-foreground">Job em processamento há mais de 10 min</p>
+                    <p className="text-xs text-muted-foreground mt-1">Há 12 min</p>
+                  </div>
+                </div>
+              </div>
+              <div 
+                className="p-3 hover:bg-secondary/50 cursor-pointer"
+                onClick={() => {
+                  toast.info('Notificação visualizada');
+                }}
+              >
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Info className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Nova versão disponível</p>
+                    <p className="text-xs text-muted-foreground">Sistema atualizado com melhorias</p>
+                    <p className="text-xs text-muted-foreground mt-1">Há 1 hora</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-2 border-t border-border">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full text-xs"
+                onClick={() => toast.success('Todas as notificações marcadas como lidas')}
+              >
+                Marcar todas como lidas
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
