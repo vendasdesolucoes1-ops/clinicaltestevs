@@ -59,6 +59,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   const pollingCountRef = useRef(0);
   const lastImageUrlRef = useRef<string>('');
   const lastCaseIdRef = useRef<string>('');
+  const lastPhotoIdRef = useRef<string | undefined>(undefined);
   const targetVersionRef = useRef<'A' | 'B' | null>(null);
   const isSimulationModeRef = useRef(false);
 
@@ -248,6 +249,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       // Store for retry
       lastCaseIdRef.current = caseId;
       lastImageUrlRef.current = imageUrl;
+      lastPhotoIdRef.current = photoId;
 
       // Generate job ID
       const jobId = crypto.randomUUID();
@@ -331,9 +333,14 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   const retryAnalysis = useCallback(async () => {
     if (lastCaseIdRef.current && lastImageUrlRef.current) {
       if (isSimulationModeRef.current && targetVersionRef.current) {
-        await triggerSimulation(lastCaseIdRef.current, lastImageUrlRef.current, targetVersionRef.current);
+        await triggerSimulation(
+          lastCaseIdRef.current,
+          lastImageUrlRef.current,
+          targetVersionRef.current,
+          lastPhotoIdRef.current
+        );
       } else {
-        await triggerAnalysis(lastCaseIdRef.current, lastImageUrlRef.current);
+        await triggerAnalysis(lastCaseIdRef.current, lastImageUrlRef.current, lastPhotoIdRef.current);
       }
     }
   }, [triggerAnalysis]);
