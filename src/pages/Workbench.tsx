@@ -32,6 +32,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
 import { useN8nFacialAnalysis } from '@/hooks/useN8nFacialAnalysis';
+import { useMediaPipeMesh } from '@/hooks/useMediaPipeMesh';
 import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
 import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
 import { supabase } from '@/integrations/supabase/client';
@@ -91,6 +92,7 @@ export default function Workbench() {
     analysisJob,
     isProcessing: isN8nProcessing,
     meshData: n8nMeshData,
+    mediaPipeMeshData: n8nMediaPipeMeshData,
     triggerAnalysis,
     triggerSimulation,
     retryAnalysis,
@@ -98,9 +100,26 @@ export default function Workbench() {
     clearCreatedVersion,
   } = useN8nFacialAnalysis();
 
+  // MediaPipe mesh (real landmarks from backend) - standalone hook
+  const {
+    meshData: standaloneMediaPipeMeshData,
+    visible: mediaPipeMeshVisible,
+    setVisible: setMediaPipeMeshVisible,
+    opacity: mediaPipeMeshOpacity,
+    setOpacity: setMediaPipeMeshOpacity,
+    density: mediaPipeMeshDensity,
+    setDensity: setMediaPipeMeshDensity,
+    status: mediaPipeStatus,
+    triggerAnalysis: triggerMediaPipeAnalysis,
+    clearMesh: clearMediaPipeMesh,
+  } = useMediaPipeMesh();
+
+  // Use MediaPipe mesh from n8n or standalone hook
+  const mediaPipeMeshData = n8nMediaPipeMeshData || standaloneMediaPipeMeshData;
+
   // Use n8n mesh data if available, otherwise use local
   const meshData = n8nMeshData || localMeshData;
-  const isAnalyzing = isLocalAnalyzing || isN8nProcessing;
+  const isAnalyzing = isLocalAnalyzing || isN8nProcessing || mediaPipeStatus === 'processing';
 
   // Calcular análise de simetria
   const symmetryResult = useSymmetryAnalysis(meshData);
@@ -794,8 +813,10 @@ export default function Workbench() {
               activeTool={activeTool}
               isPanMode={isPanMode}
               meshData={meshData}
-              showMesh={showMesh}
-              meshOpacity={meshOpacity}
+              mediaPipeMeshData={mediaPipeMeshData}
+              showMesh={showMesh && (mediaPipeMeshVisible || !mediaPipeMeshData)}
+              meshOpacity={mediaPipeMeshData ? mediaPipeMeshOpacity : meshOpacity}
+              meshDensity={mediaPipeMeshDensity}
               meshEditMode={meshEditMode}
               connectingFrom={connectingFrom}
               onMeshPointMove={updatePoint}

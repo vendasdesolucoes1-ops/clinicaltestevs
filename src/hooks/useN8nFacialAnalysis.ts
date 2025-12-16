@@ -5,6 +5,7 @@ import { N8N_FACIAL_ANALYSIS_WEBHOOK, POLLING_INTERVAL_MS, MAX_POLLING_ATTEMPTS 
 import { toast } from 'sonner';
 import type { FacialMeshData, FacialPoint, MeshDensity, FaceROI, AnatomicalRegion } from '@/types/facialLandmarks';
 import { getConnectionsByDensity } from '@/types/facialLandmarks';
+import type { MediaPipeMeshData, MediaPipeWebhookResponse } from '@/types/mediapipeMesh';
 
 export type AnalysisJobStatus = 'idle' | 'processing' | 'completed' | 'failed';
 
@@ -33,6 +34,9 @@ interface UseN8nFacialAnalysisReturn {
   meshData: FacialMeshData | null;
   faceROI: FaceROI | null;
   
+  // MediaPipe mesh data (real landmarks)
+  mediaPipeMeshData: MediaPipeMeshData | null;
+  
   // Actions
   triggerAnalysis: (caseId: string, imageUrl: string, photoId?: string) => Promise<void>;
   triggerSimulation: (caseId: string, imageUrl: string, targetVersion: 'A' | 'B', photoId?: string) => Promise<void>;
@@ -51,6 +55,7 @@ interface UseN8nFacialAnalysisReturn {
 export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
   const [meshData, setMeshData] = useState<FacialMeshData | null>(null);
+  const [mediaPipeMeshData, setMediaPipeMeshData] = useState<MediaPipeMeshData | null>(null);
   const [faceROI, setFaceROI] = useState<FaceROI | null>(null);
   const [meshDensity, setMeshDensity] = useState<MeshDensity>('dense');
   const [createdVersion, setCreatedVersion] = useState<CreatedVersion | null>(null);
@@ -264,6 +269,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
 
       // Clear previous mesh data
       setMeshData(null);
+      setMediaPipeMeshData(null);
       setFaceROI(null);
 
       toast.info('Iniciando análise facial...', {
@@ -311,6 +317,23 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
           description: 'Não foi possível iniciar a análise facial.'
         });
         return;
+      }
+
+      // Try to parse immediate response with MediaPipe data
+      try {
+        const responseData: MediaPipeWebhookResponse = await response.json();
+        
+        if (responseData.status === 'success' && responseData.face_mesh) {
+          // Immediate response with MediaPipe mesh data!
+          setMediaPipeMeshData(responseData.face_mesh);
+          setAnalysisJob(prev => prev ? { ...prev, status: 'completed' } : null);
+          toast.success('Mesh facial carregado!', {
+            description: `${responseData.face_mesh.points.length} landmarks detectados.`
+          });
+          return;
+        }
+      } catch {
+        // Response não é JSON - continuar com polling assíncrono
       }
 
       // Start polling for status
@@ -361,6 +384,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     stopPolling();
     setAnalysisJob(null);
     setMeshData(null);
+    setMediaPipeMeshData(null);
     setFaceROI(null);
     isSimulationModeRef.current = false;
     targetVersionRef.current = null;
@@ -378,6 +402,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     isProcessing,
     meshData,
     faceROI,
+    mediaPipeMeshData,
     triggerAnalysis,
     triggerSimulation,
     retryAnalysis,
