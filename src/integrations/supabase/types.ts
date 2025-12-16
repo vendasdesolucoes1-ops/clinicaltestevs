@@ -409,6 +409,47 @@ export type Database = {
         }
         Relationships: []
       }
+      notifications: {
+        Row: {
+          case_id: string | null
+          created_at: string
+          id: string
+          message: string
+          read: boolean
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          case_id?: string | null
+          created_at?: string
+          id?: string
+          message: string
+          read?: boolean
+          title: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          case_id?: string | null
+          created_at?: string
+          id?: string
+          message?: string
+          read?: boolean
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
