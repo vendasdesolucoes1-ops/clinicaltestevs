@@ -22,6 +22,7 @@ export type Database = {
           description: string | null
           id: string
           metadata: Json | null
+          photo_id: string | null
           user_id: string | null
         }
         Insert: {
@@ -31,6 +32,7 @@ export type Database = {
           description?: string | null
           id?: string
           metadata?: Json | null
+          photo_id?: string | null
           user_id?: string | null
         }
         Update: {
@@ -40,6 +42,7 @@ export type Database = {
           description?: string | null
           id?: string
           metadata?: Json | null
+          photo_id?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -66,6 +69,7 @@ export type Database = {
           file_name: string
           format: Database["public"]["Enums"]["export_format"]
           id: string
+          photo_id: string | null
           storage_path: string | null
           version_id: string | null
         }
@@ -75,6 +79,7 @@ export type Database = {
           file_name: string
           format: Database["public"]["Enums"]["export_format"]
           id?: string
+          photo_id?: string | null
           storage_path?: string | null
           version_id?: string | null
         }
@@ -84,6 +89,7 @@ export type Database = {
           file_name?: string
           format?: Database["public"]["Enums"]["export_format"]
           id?: string
+          photo_id?: string | null
           storage_path?: string | null
           version_id?: string | null
         }
@@ -111,6 +117,7 @@ export type Database = {
           case_id: string
           created_at: string
           id: string
+          photo_id: string | null
           storage_path: string | null
           url: string
         }
@@ -120,6 +127,7 @@ export type Database = {
           case_id: string
           created_at?: string
           id?: string
+          photo_id?: string | null
           storage_path?: string | null
           url: string
         }
@@ -129,6 +137,7 @@ export type Database = {
           case_id?: string
           created_at?: string
           id?: string
+          photo_id?: string | null
           storage_path?: string | null
           url?: string
         }
@@ -151,6 +160,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          photo_id: string | null
           status: Database["public"]["Enums"]["simulation_status"]
           sub_version: number | null
           thumbnail_url: string | null
@@ -165,6 +175,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          photo_id?: string | null
           status?: Database["public"]["Enums"]["simulation_status"]
           sub_version?: number | null
           thumbnail_url?: string | null
@@ -179,6 +190,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          photo_id?: string | null
           status?: Database["public"]["Enums"]["simulation_status"]
           sub_version?: number | null
           thumbnail_url?: string | null
@@ -210,6 +222,7 @@ export type Database = {
           created_at: string
           id: string
           notes: string | null
+          photo_id: string | null
           responsible_id: string | null
           status: Database["public"]["Enums"]["case_status"]
           tags: string[] | null
@@ -223,6 +236,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          photo_id?: string | null
           responsible_id?: string | null
           status?: Database["public"]["Enums"]["case_status"]
           tags?: string[] | null
@@ -236,6 +250,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          photo_id?: string | null
           responsible_id?: string | null
           status?: Database["public"]["Enums"]["case_status"]
           tags?: string[] | null
@@ -357,6 +372,7 @@ export type Database = {
           error_stage: string | null
           image_url: string
           job_id: string
+          photo_id: string | null
           status: Database["public"]["Enums"]["job_status"]
           timestamp_end: string | null
           timestamp_start: string | null
@@ -368,6 +384,7 @@ export type Database = {
           error_stage?: string | null
           image_url: string
           job_id?: string
+          photo_id?: string | null
           status: Database["public"]["Enums"]["job_status"]
           timestamp_end?: string | null
           timestamp_start?: string | null
@@ -379,6 +396,7 @@ export type Database = {
           error_stage?: string | null
           image_url?: string
           job_id?: string
+          photo_id?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           timestamp_end?: string | null
           timestamp_start?: string | null
@@ -392,6 +410,7 @@ export type Database = {
           first_name: string | null
           id: string
           last_name: string | null
+          photo_id: string | null
           updated_at: string
         }
         Insert: {
@@ -400,6 +419,7 @@ export type Database = {
           first_name?: string | null
           id: string
           last_name?: string | null
+          photo_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -408,6 +428,7 @@ export type Database = {
           first_name?: string | null
           id?: string
           last_name?: string | null
+          photo_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -418,6 +439,7 @@ export type Database = {
           completed_at: string | null
           id: string
           parameters: Json | null
+          photo_id: string | null
           progress: number
           started_at: string
           status: Database["public"]["Enums"]["simulation_status"]
@@ -428,6 +450,7 @@ export type Database = {
           completed_at?: string | null
           id?: string
           parameters?: Json | null
+          photo_id?: string | null
           progress?: number
           started_at?: string
           status?: Database["public"]["Enums"]["simulation_status"]
@@ -438,6 +461,7 @@ export type Database = {
           completed_at?: string | null
           id?: string
           parameters?: Json | null
+          photo_id?: string | null
           progress?: number
           started_at?: string
           status?: Database["public"]["Enums"]["simulation_status"]
@@ -464,18 +488,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          photo_id: string | null
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          photo_id?: string | null
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
+          photo_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }

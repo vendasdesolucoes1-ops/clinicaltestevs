@@ -140,7 +140,9 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   }, [meshDensity]);
 
   // Poll for job status
-  const pollJobStatus = useCallback(async (caseId: string) => {
+  const pollJobStatus = useCallback(async (caseId: string, photoId?: string) => {
+    console.log('[Polling] Checking job status for case:', caseId, 'photo:', photoId);
+    
     const { data, error } = await supabase
       .from('facial_analysis_jobs')
       .select('status, error_message, error_stage, job_id, timestamp_start')
@@ -149,13 +151,26 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       .limit(1);
 
     if (error) {
-      console.error('Erro ao verificar status:', error);
+      console.error('[Polling] Error checking status:', error);
       return;
     }
 
+    console.log('[Polling] Job data:', data);
+
     if (data && data.length > 0) {
       const job = data[0];
-      const status = job.status as AnalysisJobStatus;
+      // Normalize status - handle both English and Portuguese
+      let status: AnalysisJobStatus = 'processing';
+      const rawStatus = job.status?.toLowerCase();
+      if (rawStatus === 'success' || rawStatus === 'completed' || rawStatus === 'pronto') {
+        status = 'completed';
+      } else if (rawStatus === 'failed' || rawStatus === 'falhou') {
+        status = 'failed';
+      } else if (rawStatus === 'processing' || rawStatus === 'processando' || rawStatus === 'pending') {
+        status = 'processing';
+      }
+
+      console.log('[Polling] Normalized status:', rawStatus, '->', status);
 
       setAnalysisJob(prev => prev ? {
         ...prev,
@@ -166,6 +181,29 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
 
       if (status === 'completed') {
         stopPolling();
+        
+        // Try to fetch MediaPipe mesh from facial_analyses
+        if (photoId) {
+          const { data: analysisData, error: analysisError } = await supabase
+            .from('facial_analyses')
+            .select('mesh, status')
+            .eq('photo_id', photoId)
+            .single();
+          
+          console.log('[Polling] Fetched analysis:', analysisData, analysisError);
+          
+          if (analysisData?.mesh && analysisData.status === 'landmarks_ready') {
+            const meshData = analysisData.mesh as unknown as MediaPipeMeshData;
+            console.log('[Polling] MediaPipe mesh found:', meshData.points?.length, 'points');
+            setMediaPipeMeshData(meshData);
+            toast.success('Mesh facial carregado!', {
+              description: `${meshData.points?.length || 0} landmarks detectados.`
+            });
+            return;
+          }
+        }
+        
+        // Fallback to old format
         await fetchAnalysisResults(caseId);
         
         // If in simulation mode, create new version
@@ -219,6 +257,8 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
 
     // Check if exceeded max polling attempts
     pollingCountRef.current++;
+    console.log('[Polling] Attempt:', pollingCountRef.current, '/', MAX_POLLING_ATTEMPTS);
+    
     if (pollingCountRef.current >= MAX_POLLING_ATTEMPTS) {
       stopPolling();
       isSimulationModeRef.current = false;
@@ -235,16 +275,18 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   }, [stopPolling, fetchAnalysisResults]);
 
   // Start polling for job status
-  const startPolling = useCallback((caseId: string) => {
+  const startPolling = useCallback((caseId: string, photoId?: string) => {
     stopPolling();
     pollingCountRef.current = 0;
     
+    console.log('[Polling] Starting polling for case:', caseId, 'photo:', photoId);
+    
     // Initial poll
-    pollJobStatus(caseId);
+    pollJobStatus(caseId, photoId);
     
     // Set up interval
     pollingRef.current = setInterval(() => {
-      pollJobStatus(caseId);
+      pollJobStatus(caseId, photoId);
     }, POLLING_INTERVAL_MS);
   }, [stopPolling, pollJobStatus]);
 
@@ -293,6 +335,9 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       }
 
       // Send POST to n8n webhook
+      console.log('[Analysis] Sending to n8n webhook:', N8N_FACIAL_ANALYSIS_WEBHOOK);
+      console.log('[Analysis] Payload:', { job_id: jobId, case_id: caseId, image_url: imageUrl, photo_id: photoId });
+      
       const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
         method: 'POST',
         headers: {
@@ -307,7 +352,11 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
         }),
       });
 
+      console.log('[Analysis] Response status:', response.status);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Analysis] Error response:', errorText);
         setAnalysisJob(prev => prev ? {
           ...prev,
           status: 'failed',
@@ -321,26 +370,34 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
 
       // Try to parse immediate response with MediaPipe data
       try {
-        const responseData: MediaPipeWebhookResponse = await response.json();
+        const responseText = await response.text();
+        console.log('[Analysis] Response body:', responseText);
         
-        if (responseData.status === 'success' && responseData.face_mesh) {
-          // Immediate response with MediaPipe mesh data!
-          setMediaPipeMeshData(responseData.face_mesh);
-          setAnalysisJob(prev => prev ? { ...prev, status: 'completed' } : null);
-          toast.success('Mesh facial carregado!', {
-            description: `${responseData.face_mesh.points.length} landmarks detectados.`
-          });
-          return;
+        if (responseText) {
+          const responseData = JSON.parse(responseText) as MediaPipeWebhookResponse;
+          console.log('[Analysis] Parsed response:', responseData);
+          
+          // Check for face_mesh in response (n8n returns synchronously)
+          if ((responseData.status === 'success' || responseData.status === 'completed') && responseData.face_mesh) {
+            console.log('[Analysis] Immediate mesh data received!', responseData.face_mesh.points?.length, 'points');
+            setMediaPipeMeshData(responseData.face_mesh);
+            setAnalysisJob(prev => prev ? { ...prev, status: 'completed' } : null);
+            toast.success('Mesh facial carregado!', {
+              description: `${responseData.face_mesh.points?.length || 0} landmarks detectados.`
+            });
+            return;
+          }
         }
-      } catch {
-        // Response não é JSON - continuar com polling assíncrono
+      } catch (parseError) {
+        console.log('[Analysis] Response is not JSON, starting polling...', parseError);
       }
 
-      // Start polling for status
-      startPolling(caseId);
+      // Start polling for status (async workflow)
+      console.log('[Analysis] Starting async polling...');
+      startPolling(caseId, photoId);
 
     } catch (error) {
-      console.error('Erro ao disparar análise:', error);
+      console.error('[Analysis] Error triggering analysis:', error);
       setAnalysisJob(prev => prev ? {
         ...prev,
         status: 'failed',
