@@ -262,10 +262,15 @@ export type Database = {
           custom_points: Json | null
           face_roi: Json | null
           id: string
+          mean_deviation: number | null
           midline_points: string[] | null
+          midline_x: number | null
+          mode: string | null
+          paired_points: number | null
           photo_id: string
           points: Json | null
           regional_scores: Json | null
+          status: string | null
           symmetry_score: number | null
           updated_at: string
         }
@@ -278,10 +283,15 @@ export type Database = {
           custom_points?: Json | null
           face_roi?: Json | null
           id?: string
+          mean_deviation?: number | null
           midline_points?: string[] | null
+          midline_x?: number | null
+          mode?: string | null
+          paired_points?: number | null
           photo_id: string
           points?: Json | null
           regional_scores?: Json | null
+          status?: string | null
           symmetry_score?: number | null
           updated_at?: string
         }
@@ -294,10 +304,15 @@ export type Database = {
           custom_points?: Json | null
           face_roi?: Json | null
           id?: string
+          mean_deviation?: number | null
           midline_points?: string[] | null
+          midline_x?: number | null
+          mode?: string | null
+          paired_points?: number | null
           photo_id?: string
           points?: Json | null
           regional_scores?: Json | null
+          status?: string | null
           symmetry_score?: number | null
           updated_at?: string
         }
