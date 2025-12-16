@@ -257,9 +257,9 @@ export default function CaseForm() {
           });
       }
 
-      // Upload photos and collect URLs
+      // Upload photos and collect URLs with photo_id
       const photosToUpload = Object.entries(photos).filter(([_, file]) => file !== null);
-      const uploadedPhotosUrls: { angle: PhotoAngle; url: string }[] = [];
+      const uploadedPhotosData: { photo_id: string; angle: PhotoAngle; url: string }[] = [];
       
       for (const [angle, file] of photosToUpload) {
         if (!file) continue;
@@ -267,15 +267,24 @@ export default function CaseForm() {
         const publicUrl = await uploadPhotoToStorage(caseId, angle as PhotoAngle, file);
         
         if (publicUrl) {
-          await supabase
+          const { data: insertedPhoto } = await supabase
             .from('case_photos')
             .insert({
               case_id: caseId,
               angle: angle as PhotoAngle,
               url: publicUrl,
               storage_path: `${caseId}/${angle}_${Date.now()}`,
+            })
+            .select('id')
+            .single();
+          
+          if (insertedPhoto) {
+            uploadedPhotosData.push({ 
+              photo_id: insertedPhoto.id, 
+              angle: angle as PhotoAngle, 
+              url: publicUrl 
             });
-          uploadedPhotosUrls.push({ angle: angle as PhotoAngle, url: publicUrl });
+          }
         }
       }
 
@@ -287,7 +296,8 @@ export default function CaseForm() {
           type: formData.type,
           notes: formData.notes,
           tags: formData.tags,
-          photos: uploadedPhotosUrls.map(p => ({
+          photos: uploadedPhotosData.map(p => ({
+            photo_id: p.photo_id,
             angle: p.angle,
             url: p.url,
           })),
