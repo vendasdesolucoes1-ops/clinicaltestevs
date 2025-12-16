@@ -34,8 +34,8 @@ interface UseN8nFacialAnalysisReturn {
   faceROI: FaceROI | null;
   
   // Actions
-  triggerAnalysis: (caseId: string, imageUrl: string) => Promise<void>;
-  triggerSimulation: (caseId: string, imageUrl: string, targetVersion: 'A' | 'B') => Promise<void>;
+  triggerAnalysis: (caseId: string, imageUrl: string, photoId?: string) => Promise<void>;
+  triggerSimulation: (caseId: string, imageUrl: string, targetVersion: 'A' | 'B', photoId?: string) => Promise<void>;
   retryAnalysis: () => Promise<void>;
   clearJob: () => void;
   
@@ -243,7 +243,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   }, [stopPolling, pollJobStatus]);
 
   // Trigger analysis via n8n webhook
-  const triggerAnalysis = useCallback(async (caseId: string, imageUrl: string) => {
+  const triggerAnalysis = useCallback(async (caseId: string, imageUrl: string, photoId?: string) => {
     try {
       // Store for retry
       lastCaseIdRef.current = caseId;
@@ -294,6 +294,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
           job_id: jobId,
           case_id: caseId,
           image_url: imageUrl,
+          photo_id: photoId || null,
           mode: "clinical",
         }),
       });
@@ -338,14 +339,14 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   }, [triggerAnalysis]);
 
   // Trigger simulation with version creation
-  const triggerSimulation = useCallback(async (caseId: string, imageUrl: string, targetVersion: 'A' | 'B') => {
+  const triggerSimulation = useCallback(async (caseId: string, imageUrl: string, targetVersion: 'A' | 'B', photoId?: string) => {
     // Set simulation mode flags before triggering
     isSimulationModeRef.current = true;
     targetVersionRef.current = targetVersion;
     setCreatedVersion(null);
     
     // Use the same triggerAnalysis flow
-    await triggerAnalysis(caseId, imageUrl);
+    await triggerAnalysis(caseId, imageUrl, photoId);
   }, [triggerAnalysis]);
 
   // Clear job state
