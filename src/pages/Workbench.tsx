@@ -1,5 +1,5 @@
 // Workbench - Main simulation screen
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   Layers, 
@@ -25,6 +25,7 @@ import { VersionPanel } from '@/components/workbench/VersionPanel';
 import { ToolPanel, type ToolType } from '@/components/workbench/ToolPanel';
 import { SimulationCanvas, SimulationCanvasRef } from '@/components/workbench/SimulationCanvas';
 import { Viewer3D } from '@/components/workbench/Viewer3D';
+import FaceMesh3D from '@/components/workbench/FaceMesh3D';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
 import { AnalysisHistory } from '@/components/workbench/AnalysisHistory';
@@ -39,6 +40,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { MEDIAPIPE_TESSELLATION } from '@/types/mediapipeMesh';
+import type { Landmark3D, TriangleFace } from '@/types/faceMesh3D';
 
 type ViewMode = '2d' | '3d' | 'compare';
 
@@ -124,6 +127,29 @@ export default function Workbench() {
 
   // Calcular análise de simetria
   const symmetryResult = useSymmetryAnalysis(meshData);
+
+  // Convert MediaPipe mesh to 3D landmarks and faces for FaceMesh3D
+  const mesh3DData = useMemo(() => {
+    if (!mediaPipeMeshData?.points || mediaPipeMeshData.points.length === 0) {
+      return { landmarks: [] as Landmark3D[], faces: [] as TriangleFace[] };
+    }
+
+    // Convert MediaPipe points to Landmark3D format
+    // Flip Y axis and scale Z for better 3D visualization
+    const landmarks: Landmark3D[] = mediaPipeMeshData.points.map(point => ({
+      x: (point.x - 0.5) * 2,  // Center and scale X: 0-1 -> -1 to 1
+      y: -(point.y - 0.5) * 2, // Center, scale and flip Y
+      z: (point.z ?? 0) * 0.5, // Scale Z depth
+    }));
+
+    // Filter valid tessellation triangles (indices must exist in landmarks)
+    const maxIndex = landmarks.length - 1;
+    const faces: TriangleFace[] = MEDIAPIPE_TESSELLATION.filter(
+      ([a, b, c]) => a <= maxIndex && b <= maxIndex && c <= maxIndex
+    );
+
+    return { landmarks, faces };
+  }, [mediaPipeMeshData]);
 
   // Auto-save mesh edits to database
   useMeshAutoSave({
@@ -839,11 +865,21 @@ export default function Workbench() {
             </div>
           )}
           {viewMode === '3d' && (
-            <Viewer3D 
-              modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
-              imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
-              isProcessing={isN8nProcessing}
-            />
+            mesh3DData.landmarks.length > 0 && mesh3DData.faces.length > 0 ? (
+              <FaceMesh3D
+                landmarks={mesh3DData.landmarks}
+                faces={mesh3DData.faces}
+                wireframe={true}
+                color="#60A5FA"
+                opacity={meshOpacity / 100}
+              />
+            ) : (
+              <Viewer3D 
+                modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
+                imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
+                isProcessing={isN8nProcessing}
+              />
+            )
           )}
           {viewMode === 'compare' && (
             <ComparisonView
