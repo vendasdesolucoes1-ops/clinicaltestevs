@@ -1,5 +1,5 @@
 // Analysis Status Component - Shows async job status
-import { Loader2, AlertCircle, CheckCircle2, RefreshCw, Clock } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, RefreshCw, Clock, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ interface AnalysisStatusProps {
   errorMessage?: string;
   errorStage?: string;
   onRetry?: () => void;
+  onCancel?: () => void;
   className?: string;
 }
 
@@ -18,6 +19,7 @@ export function AnalysisStatus({
   errorMessage, 
   errorStage,
   onRetry,
+  onCancel,
   className 
 }: AnalysisStatusProps) {
   if (status === 'idle') {
@@ -68,6 +70,17 @@ export function AnalysisStatus({
                 <Progress value={undefined} className="h-1.5 flex-1" />
                 <Clock className="h-3 w-3 text-muted-foreground" />
               </div>
+              {onCancel && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onCancel}
+                  className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-3 w-3" />
+                  Cancelar
+                </Button>
+              )}
             </div>
           )}
 
@@ -110,9 +123,10 @@ export function AnalysisStatus({
 interface AnalysisStatusBarProps {
   status: AnalysisJobStatus;
   onRetry?: () => void;
+  onCancel?: () => void;
 }
 
-export function AnalysisStatusBar({ status, onRetry }: AnalysisStatusBarProps) {
+export function AnalysisStatusBar({ status, onRetry, onCancel }: AnalysisStatusBarProps) {
   if (status === 'idle' || status === 'completed') {
     return null;
   }
@@ -130,6 +144,17 @@ export function AnalysisStatusBar({ status, onRetry }: AnalysisStatusBarProps) {
           <div className="flex-1 max-w-xs h-1.5 bg-primary/20 rounded-full overflow-hidden">
             <div className="h-full bg-primary rounded-full animate-pulse w-2/3" />
           </div>
+          {onCancel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancel}
+              className="h-6 px-2 text-xs gap-1 text-muted-foreground hover:text-destructive"
+            >
+              <X className="h-3 w-3" />
+              Cancelar
+            </Button>
+          )}
         </>
       )}
       
