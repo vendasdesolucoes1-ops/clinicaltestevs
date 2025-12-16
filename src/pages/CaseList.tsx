@@ -8,7 +8,7 @@ import {
   Archive,
   Eye,
   FolderOpen,
-  ChevronDown
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -34,6 +35,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -91,6 +108,8 @@ export default function CaseList() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [cases, setCases] = useState<ClinicalCaseRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [caseToDelete, setCaseToDelete] = useState<ClinicalCaseRow | null>(null);
 
   useEffect(() => {
     const loadCases = async () => {
@@ -145,6 +164,35 @@ export default function CaseList() {
 
   const handleArchive = (caseItem: ClinicalCaseRow) => {
     toast.success(`Caso ${caseItem.codename} arquivado (apenas visual, ainda não move para "arquivado")`);
+  };
+
+  const handleDeleteClick = (caseItem: ClinicalCaseRow) => {
+    setCaseToDelete(caseItem);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!caseToDelete) return;
+
+    const { error } = await supabase
+      .from('clinical_cases')
+      .delete()
+      .eq('id', caseToDelete.id);
+
+    if (error) {
+      if (error.code === '42501') {
+        toast.error('Você não tem permissão para excluir este caso');
+      } else {
+        toast.error('Erro ao excluir caso');
+        console.error('Delete error:', error);
+      }
+    } else {
+      setCases((prev) => prev.filter((c) => c.id !== caseToDelete.id));
+      toast.success(`Caso ${caseToDelete.codename} excluído com sucesso`);
+    }
+
+    setDeleteDialogOpen(false);
+    setCaseToDelete(null);
   };
 
   const formatDate = (dateString: string) => {
@@ -223,12 +271,13 @@ export default function CaseList() {
               <TableHead>Tags</TableHead>
               <TableHead>Atualizado</TableHead>
               <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   Carregando casos...
                 </TableCell>
               </TableRow>
@@ -277,6 +326,26 @@ export default function CaseList() {
                   {formatDate(caseItem.updatedAt)}
                 </TableCell>
                 <TableCell>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          asChild
+                        >
+                          <Link to={`/workbench/${caseItem.id}`}>
+                            <Eye className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Abrir Workbench</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </TableCell>
+                <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button 
@@ -287,7 +356,7 @@ export default function CaseList() {
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" className="bg-popover">
                       <DropdownMenuItem asChild>
                         <Link to={`/workbench/${caseItem.id}`} className="flex items-center gap-2">
                           <Eye className="h-4 w-4" />
@@ -306,6 +375,14 @@ export default function CaseList() {
                       >
                         <Archive className="h-4 w-4" />
                         Arquivar
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem 
+                        onClick={() => handleDeleteClick(caseItem)}
+                        className="flex items-center gap-2 text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Excluir
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -328,6 +405,28 @@ export default function CaseList() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Caso</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o caso <strong>{caseToDelete?.codename}</strong>? 
+              Esta ação não pode ser desfeita e todos os dados associados serão perdidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
