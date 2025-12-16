@@ -562,8 +562,8 @@ export default function Workbench() {
       return;
     }
     
-    await triggerSimulation(caseData.id, currentImageUrl, targetVersion);
-  }, [caseData, currentImageUrl, triggerSimulation]);
+    await triggerSimulation(caseData.id, currentImageUrl, targetVersion, currentPhotoId);
+  }, [caseData, currentImageUrl, currentPhotoId, triggerSimulation]);
 
   // Handle created version from simulation
   useEffect(() => {
