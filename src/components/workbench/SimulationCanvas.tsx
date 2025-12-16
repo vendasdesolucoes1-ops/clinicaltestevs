@@ -5,8 +5,10 @@ import { ToolType } from './ToolPanel';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasStatusBar } from './CanvasStatusBar';
 import { FacialMesh } from './FacialMesh';
+import { MediaPipeMeshRenderer } from './MediaPipeMeshRenderer';
 import { useCanvasState, Point, CanvasObject } from '@/hooks/useCanvasState';
 import { FacialMeshData } from '@/types/facialLandmarks';
+import { MediaPipeMeshData } from '@/types/mediapipeMesh';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -17,8 +19,10 @@ interface SimulationCanvasProps {
   isPanMode: boolean;
   onObjectAdded?: (object: CanvasObject) => void;
   meshData?: FacialMeshData | null;
+  mediaPipeMeshData?: MediaPipeMeshData | null;
   showMesh?: boolean;
   meshOpacity?: number;
+  meshDensity?: 'simple' | 'dense';
   meshEditMode?: MeshEditMode;
   connectingFrom?: string | null;
   onMeshPointMove?: (pointId: string, x: number, y: number) => void;
@@ -171,7 +175,7 @@ const createWarpArrow = (
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, showMesh = true, meshOpacity = 80, meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'dense', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -717,11 +721,11 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           />
         )}
 
-        {/* Facial Mesh Overlay */}
+        {/* Facial Mesh Overlay (Legacy/AI-generated) */}
         <FacialMesh
           canvas={fabricRef.current}
           meshData={meshData || null}
-          visible={showMesh && !!meshData}
+          visible={showMesh && !!meshData && !mediaPipeMeshData}
           opacity={meshOpacity}
           imageWidth={imageBounds.width}
           imageHeight={imageBounds.height}
@@ -735,6 +739,19 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           onStartConnection={onMeshStartConnection}
           onAddConnection={onMeshAddConnection}
           onRemoveConnection={onMeshRemoveConnection}
+        />
+
+        {/* MediaPipe Mesh Overlay (Real landmarks) */}
+        <MediaPipeMeshRenderer
+          canvas={fabricRef.current}
+          meshData={mediaPipeMeshData || null}
+          visible={showMesh && !!mediaPipeMeshData}
+          opacity={meshOpacity}
+          density={meshDensity}
+          imageWidth={imageBounds.width}
+          imageHeight={imageBounds.height}
+          imageLeft={imageBounds.left}
+          imageTop={imageBounds.top}
         />
 
         <CanvasToolbar
