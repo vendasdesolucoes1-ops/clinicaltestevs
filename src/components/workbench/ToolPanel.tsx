@@ -160,13 +160,7 @@ export function ToolPanel({
   }, [onTriggerSimulation, simParams.targetVersion]);
 
   return (
-    <div className="h-full flex flex-col bg-card border-l border-border">
-      {/* Header */}
-      <div className="p-3 border-b border-border">
-        <h3 className="font-semibold text-sm text-foreground">Ferramentas</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">Use 1-7 para trocar</p>
-      </div>
-
+    <div className="h-full flex flex-col overflow-hidden">
       <ScrollArea className="flex-1">
         {/* Tools Grid */}
         <div className="p-3 border-b border-border">

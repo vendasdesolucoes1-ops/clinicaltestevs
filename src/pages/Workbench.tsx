@@ -1,25 +1,11 @@
 // Workbench - Main simulation screen
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  Layers, 
-  Box, 
-  GitCompare,
-  ChevronRight,
   Loader2,
-  Scan,
-  Image,
-  CheckCircle2
+  FolderOpen,
+  Wrench
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VersionPanel } from '@/components/workbench/VersionPanel';
 import { ToolPanel, type ToolType } from '@/components/workbench/ToolPanel';
@@ -29,6 +15,9 @@ import FaceMesh3D from '@/components/workbench/FaceMesh3D';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
 import { AnalysisHistory } from '@/components/workbench/AnalysisHistory';
+import { CollapsiblePanel } from '@/components/workbench/CollapsiblePanel';
+import { CanvasContextBar } from '@/components/workbench/CanvasContextBar';
+import { WorkbenchHeader } from '@/components/workbench/WorkbenchHeader';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
@@ -39,7 +28,6 @@ import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
 import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import { MEDIAPIPE_TESSELLATION } from '@/types/mediapipeMesh';
 import type { Landmark3D, TriangleFace } from '@/types/faceMesh3D';
 
@@ -683,10 +671,45 @@ export default function Workbench() {
   const versionsA = caseData.versions.filter(v => v.type === 'A');
   const versionsB = caseData.versions.filter(v => v.type === 'B');
 
+  // Handle photo selection from header
+  const handlePhotoSelect = useCallback(async (url: string, photo: CasePhoto) => {
+    setCurrentImageUrl(url);
+    clearMesh();
+    setCurrentPhotoId(photo.id);
+    
+    if (analyzedPhotoIds.has(photo.id)) {
+      const { data: existingAnalysis } = await supabase
+        .from('facial_analyses')
+        .select('*')
+        .eq('photo_id', photo.id)
+        .maybeSingle();
+      
+      if (existingAnalysis && 
+          existingAnalysis.status === 'landmarks_ready' && 
+          Array.isArray(existingAnalysis.points) && 
+          existingAnalysis.points.length > 0) {
+        loadExistingAnalysis({
+          points: existingAnalysis.points as any,
+          faceROI: existingAnalysis.face_roi as any,
+          midlinePoints: Array.isArray(existingAnalysis.midline_points) ? existingAnalysis.midline_points : [],
+          customConnections: Array.isArray(existingAnalysis.custom_connections) ? existingAnalysis.custom_connections as any : [],
+        });
+        toast.info('Análise facial carregada');
+      }
+    }
+  }, [analyzedPhotoIds, clearMesh, loadExistingAnalysis]);
+
   return (
     <div className="h-[calc(100vh-3.5rem)] flex overflow-hidden">
-      {/* Left Panel - Versions */}
-      <div className="w-64 shrink-0">
+      {/* Left Panel - Case & Versions */}
+      <CollapsiblePanel
+        side="left"
+        title="Caso & Versões"
+        description="Gerencie versões de simulação e compare técnicas"
+        icon={<FolderOpen className="h-4 w-4 text-muted-foreground" />}
+        width="w-64"
+        defaultOpen={true}
+      >
         <VersionPanel
           caseData={caseData}
           selectedVersion={selectedVersion}
@@ -698,161 +721,55 @@ export default function Workbench() {
           onExport={handleExport}
           onAddPhoto={handleAddPhoto}
         />
-      </div>
+      </CollapsiblePanel>
 
       {/* Center - Canvas */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Header */}
-        <div className="h-12 border-b border-border px-4 flex items-center justify-between bg-card shrink-0">
-          <div className="flex items-center gap-2 text-sm">
-            <Link to="/cases" className="text-muted-foreground hover:text-foreground transition-colors">
-              Casos
-            </Link>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            <span className="text-foreground font-medium">{caseData.codename}</span>
-            {selectedVersion && (
-              <>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                <span className={cn(
-                  "font-medium",
-                  selectedVersion.type === 'A' ? "text-version-a" :
-                  selectedVersion.type === 'B' ? "text-version-b" :
-                  "text-foreground"
-                )}>
-                  {selectedVersion.name}
-                </span>
-              </>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Photo Selector */}
-            {caseData.photos.length > 0 && (
-              <Select
-                value={currentImageUrl}
-                onValueChange={async (url) => {
-                  setCurrentImageUrl(url);
-                  clearMesh(); // Clear existing mesh when switching photos
-                  
-                  // Find the selected photo and update photoId
-                  const selectedPhoto = caseData.photos.find(p => p.url === url);
-                  if (selectedPhoto) {
-                    setCurrentPhotoId(selectedPhoto.id);
-                    
-                    // Check for existing analysis
-                    if (analyzedPhotoIds.has(selectedPhoto.id)) {
-                      // Load existing analysis for this photo
-                      const { data: existingAnalysis } = await supabase
-                        .from('facial_analyses')
-                        .select('*')
-                        .eq('photo_id', selectedPhoto.id)
-                        .maybeSingle();
-                      
-                      // RUNTIME SAFETY: Only load if status is landmarks_ready and points is a valid array
-                      if (existingAnalysis && 
-                          existingAnalysis.status === 'landmarks_ready' && 
-                          Array.isArray(existingAnalysis.points) && 
-                          existingAnalysis.points.length > 0) {
-                        loadExistingAnalysis({
-                          points: existingAnalysis.points as any,
-                          faceROI: existingAnalysis.face_roi as any,
-                          midlinePoints: Array.isArray(existingAnalysis.midline_points) ? existingAnalysis.midline_points : [],
-                          customConnections: Array.isArray(existingAnalysis.custom_connections) ? existingAnalysis.custom_connections as any : [],
-                        });
-                        toast.info('Análise facial carregada');
-                      }
-                    }
-                  }
-                }}
-              >
-                <SelectTrigger className="w-[180px] h-8 text-xs">
-                  <Image className="h-3.5 w-3.5 mr-2" />
-                  <SelectValue placeholder="Selecionar foto" />
-                </SelectTrigger>
-                <SelectContent className="z-50">
-                  {caseData.photos.map((photo) => (
-                    <SelectItem key={photo.id} value={photo.url} className="text-xs">
-                      <span className="flex items-center gap-2">
-                        {photo.angle === 'frente' ? 'Frente' :
-                         photo.angle === 'perfil_d' ? 'Perfil Direito' :
-                         photo.angle === 'perfil_e' ? 'Perfil Esquerdo' :
-                         photo.angle === 'tres_quartos' ? '3/4' : photo.angle}
-                        {analyzedPhotoIds.has(photo.id) && (
-                          <CheckCircle2 className="h-3 w-3 text-success" />
-                        )}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-
-            {/* Gerar Análise Facial Button */}
-            <Button
-              variant="default"
-              size="sm"
-              className="gap-2"
-              disabled={!currentImageUrl || currentImageUrl === '/placeholder.svg' || isAnalyzing}
-              onClick={() => caseData && triggerAnalysis(caseData.id, currentImageUrl, currentPhotoId)}
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Analisando...
-                </>
-              ) : (
-                <>
-                  <Scan className="h-4 w-4" />
-                  Gerar Análise Facial
-                </>
-              )}
-            </Button>
-
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-              <TabsList className="h-8">
-                <TabsTrigger value="2d" className="text-xs gap-1.5 px-3">
-                  <Layers className="h-3.5 w-3.5" />
-                  2D
-                </TabsTrigger>
-                <TabsTrigger value="3d" className="text-xs gap-1.5 px-3">
-                  <Box className="h-3.5 w-3.5" />
-                  3D
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="compare" 
-                  className="text-xs gap-1.5 px-3"
-                  disabled={versionsA.length === 0 && versionsB.length === 0}
-                >
-                  <GitCompare className="h-3.5 w-3.5" />
-                  Comparar
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-        </div>
+        <WorkbenchHeader
+          caseData={caseData}
+          selectedVersion={selectedVersion}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          currentImageUrl={currentImageUrl}
+          onPhotoSelect={handlePhotoSelect}
+          analyzedPhotoIds={analyzedPhotoIds}
+          isAnalyzing={isAnalyzing}
+          onTriggerAnalysis={() => triggerAnalysis(caseData.id, currentImageUrl, currentPhotoId)}
+          canCompare={versionsA.length > 0 || versionsB.length > 0}
+        />
 
         {/* Canvas Area */}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 relative">
           {viewMode === '2d' && (
-            <SimulationCanvas
-              ref={canvasRef}
-              imageUrl={currentImageUrl}
-              activeTool={activeTool}
-              isPanMode={isPanMode}
-              meshData={meshData}
-              mediaPipeMeshData={mediaPipeMeshData}
-              showMesh={showMesh && (mediaPipeMeshVisible || !mediaPipeMeshData)}
-              meshOpacity={mediaPipeMeshData ? mediaPipeMeshOpacity : meshOpacity}
-              meshDensity={mediaPipeMeshDensity}
-              meshEditMode={meshEditMode}
-              connectingFrom={connectingFrom}
-              onMeshPointMove={updatePoint}
-              onMeshPointAdd={addPoint}
-              onMeshPointRemove={removePoint}
-              onMeshStartConnection={startConnection}
-              onMeshAddConnection={addConnection}
-              onMeshRemoveConnection={removeConnection}
-            />
+            <>
+              <SimulationCanvas
+                ref={canvasRef}
+                imageUrl={currentImageUrl}
+                activeTool={activeTool}
+                isPanMode={isPanMode}
+                meshData={meshData}
+                mediaPipeMeshData={mediaPipeMeshData}
+                showMesh={showMesh && (mediaPipeMeshVisible || !mediaPipeMeshData)}
+                meshOpacity={mediaPipeMeshData ? mediaPipeMeshOpacity : meshOpacity}
+                meshDensity={mediaPipeMeshDensity}
+                meshEditMode={meshEditMode}
+                connectingFrom={connectingFrom}
+                onMeshPointMove={updatePoint}
+                onMeshPointAdd={addPoint}
+                onMeshPointRemove={removePoint}
+                onMeshStartConnection={startConnection}
+                onMeshAddConnection={addConnection}
+                onMeshRemoveConnection={removeConnection}
+              />
+              
+              {/* Context Bar */}
+              <CanvasContextBar
+                activeTool={activeTool}
+                isPanMode={isPanMode}
+                zoom={100}
+              />
+            </>
           )}
           
           {/* Analyzing indicator */}
@@ -861,9 +778,11 @@ export default function Workbench() {
               <div className="flex flex-col items-center gap-3 p-6 rounded-lg bg-card border border-border shadow-xl">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <span className="text-sm text-foreground font-medium">Analisando landmarks faciais...</span>
+                <p className="text-xs text-muted-foreground">Processando via n8n...</p>
               </div>
             </div>
           )}
+          
           {viewMode === '3d' && (
             mesh3DData.landmarks.length > 0 && mesh3DData.faces.length > 0 ? (
               <FaceMesh3D
@@ -881,6 +800,7 @@ export default function Workbench() {
               />
             )
           )}
+          
           {viewMode === 'compare' && (
             <ComparisonView
               imageA={currentImageUrl}
@@ -899,60 +819,66 @@ export default function Workbench() {
             onCancel={cancelAnalysis}
           />
         )}
-
-        {/* Processing indicator now shown via ToolPanel and AnalysisStatusBar */}
       </div>
 
       {/* Right Panel - Tools */}
-      <div className="w-72 shrink-0 flex flex-col">
-        <ToolPanel
-          activeTool={activeTool}
-          onToolChange={setActiveTool}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onClear={handleClear}
-          canUndo={objects.length > 0}
-          canRedo={false}
-          isSimulating={isN8nProcessing}
-          onTriggerSimulation={handleTriggerSimulation}
-          showMesh={showMesh}
-          onShowMeshChange={setShowMesh}
-          meshOpacity={meshOpacity}
-          onMeshOpacityChange={setMeshOpacity}
-          meshDensity={meshDensity}
-          onMeshDensityChange={setMeshDensity}
-          meshEditMode={meshEditMode}
-          onMeshEditModeChange={setMeshEditMode}
-          isConnecting={!!connectingFrom}
-          onCancelConnection={cancelConnection}
-          isAnalyzingFace={isAnalyzing}
-          symmetryResult={symmetryResult}
-          onGetCanvasImage={() => canvasRef.current?.getCanvasDataUrl() ?? null}
-          caseName={caseData?.codename}
-          currentPhotoAngle={caseData?.photos.find(p => p.url === currentImageUrl)?.angle}
-        />
-        
-        {/* Analysis History */}
-        {caseData && (
-          <div className="p-3 border-t border-border bg-card">
-            <AnalysisHistory 
-              caseId={caseData.id} 
-              onLoadAnalysis={loadExistingAnalysis}
-              onAnalysisDeleted={async () => {
-                // Refresh analyzed photo IDs after deletion
-                const { data: analysesData } = await supabase
-                  .from('facial_analyses')
-                  .select('photo_id')
-                  .eq('case_id', caseData.id);
-                
-                if (analysesData) {
-                  setAnalyzedPhotoIds(new Set(analysesData.map(a => a.photo_id)));
-                }
-              }}
-            />
-          </div>
-        )}
-      </div>
+      <CollapsiblePanel
+        side="right"
+        title="Ferramentas"
+        description="Ferramentas de simulação e análise facial"
+        icon={<Wrench className="h-4 w-4 text-muted-foreground" />}
+        width="w-72"
+        defaultOpen={true}
+      >
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <ToolPanel
+            activeTool={activeTool}
+            onToolChange={setActiveTool}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onClear={handleClear}
+            canUndo={objects.length > 0}
+            canRedo={false}
+            isSimulating={isN8nProcessing}
+            onTriggerSimulation={handleTriggerSimulation}
+            showMesh={showMesh}
+            onShowMeshChange={setShowMesh}
+            meshOpacity={meshOpacity}
+            onMeshOpacityChange={setMeshOpacity}
+            meshDensity={meshDensity}
+            onMeshDensityChange={setMeshDensity}
+            meshEditMode={meshEditMode}
+            onMeshEditModeChange={setMeshEditMode}
+            isConnecting={!!connectingFrom}
+            onCancelConnection={cancelConnection}
+            isAnalyzingFace={isAnalyzing}
+            symmetryResult={symmetryResult}
+            onGetCanvasImage={() => canvasRef.current?.getCanvasDataUrl() ?? null}
+            caseName={caseData?.codename}
+            currentPhotoAngle={caseData?.photos.find(p => p.url === currentImageUrl)?.angle}
+          />
+          
+          {/* Analysis History */}
+          {caseData && (
+            <div className="p-3 border-t border-border">
+              <AnalysisHistory 
+                caseId={caseData.id} 
+                onLoadAnalysis={loadExistingAnalysis}
+                onAnalysisDeleted={async () => {
+                  const { data: analysesData } = await supabase
+                    .from('facial_analyses')
+                    .select('photo_id')
+                    .eq('case_id', caseData.id);
+                  
+                  if (analysesData) {
+                    setAnalyzedPhotoIds(new Set(analysesData.map(a => a.photo_id)));
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </CollapsiblePanel>
     </div>
   );
 }

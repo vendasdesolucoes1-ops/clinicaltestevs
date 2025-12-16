@@ -146,7 +146,7 @@ export function VersionPanel({
   };
 
   return (
-    <div className="h-full flex flex-col bg-card border-r border-border">
+    <div className="h-full flex flex-col">
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -156,8 +156,8 @@ export function VersionPanel({
         onChange={handlePhotoUpload}
       />
 
-      {/* Case Header */}
-      <div className="p-4 border-b border-border">
+      {/* Case Info */}
+      <div className="p-3 border-b border-border">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <Badge 
@@ -185,15 +185,19 @@ export function VersionPanel({
             <Camera className="h-4 w-4" />
           </Button>
         </div>
-        <h2 className="font-semibold text-foreground">{caseData.codename}</h2>
-        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{caseData.notes}</p>
-        <div className="flex flex-wrap gap-1 mt-3">
-          {caseData.tags.slice(0, 4).map(tag => (
-            <Badge key={tag} variant="secondary" className="text-xs font-normal">
-              {tag}
-            </Badge>
-          ))}
-        </div>
+        <h2 className="font-semibold text-sm text-foreground">{caseData.codename}</h2>
+        {caseData.notes && (
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{caseData.notes}</p>
+        )}
+        {caseData.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {caseData.tags.slice(0, 4).map(tag => (
+              <Badge key={tag} variant="secondary" className="text-[10px] font-normal">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Versions */}
