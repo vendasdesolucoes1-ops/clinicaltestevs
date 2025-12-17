@@ -1,4 +1,4 @@
-// Tool Panel - Right side panel with tools and simulation controls
+// Tool Panel - Right side panel with tools and simulation controls - v2
 import { useState, useCallback } from 'react';
 import {
   Move,
