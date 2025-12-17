@@ -144,14 +144,15 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
         description: 'O mesh será renderizado automaticamente.'
       });
 
-      // Send to n8n webhook - APENAS case_id, image_url, mode
-      console.log('[MediaPipeMesh] Sending to n8n:', { case_id: caseId, image_url: imageUrl, mode: 'clinical' });
+      // Send to n8n webhook
+      console.log('[MediaPipeMesh] Sending to n8n:', { case_id: caseId, photo_id: photoId, image_url: imageUrl, mode: 'clinical' });
       
       const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           case_id: caseId,
+          photo_id: photoId,
           image_url: imageUrl,
           mode: 'clinical',
         }),
