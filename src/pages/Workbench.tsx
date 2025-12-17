@@ -18,6 +18,7 @@ import { AnalysisHistory } from '@/components/workbench/AnalysisHistory';
 import { CollapsiblePanel } from '@/components/workbench/CollapsiblePanel';
 import { CanvasContextBar } from '@/components/workbench/CanvasContextBar';
 import { WorkbenchHeader } from '@/components/workbench/WorkbenchHeader';
+import { WorkflowProgressPanel } from '@/components/workbench/WorkflowProgressPanel';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
@@ -857,6 +858,15 @@ export default function Workbench() {
             caseName={caseData?.codename}
             currentPhotoAngle={caseData?.photos.find(p => p.url === currentImageUrl)?.angle}
           />
+          
+          {/* Workflow Progress Panel */}
+          {caseData && (
+            <WorkflowProgressPanel 
+              caseId={caseData.id}
+              onRetry={retryAnalysis}
+              onCancel={cancelAnalysis}
+            />
+          )}
           
           {/* Analysis History */}
           {caseData && (
