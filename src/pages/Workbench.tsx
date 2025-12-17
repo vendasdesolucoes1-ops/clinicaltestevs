@@ -830,7 +830,7 @@ export default function Workbench() {
         width="w-72"
         defaultOpen={true}
       >
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           <ToolPanel
             activeTool={activeTool}
             onToolChange={setActiveTool}

@@ -60,7 +60,7 @@ export function CollapsiblePanel({
 
       {/* Panel Content */}
       {isOpen ? (
-        <div className="h-full flex flex-col bg-card">
+        <div className="h-full min-h-0 flex flex-col bg-card">
           {/* Header with title and help */}
           <div className="p-3 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -87,7 +87,7 @@ export function CollapsiblePanel({
           </div>
           
           {/* Content */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden">
             {children}
           </div>
         </div>
