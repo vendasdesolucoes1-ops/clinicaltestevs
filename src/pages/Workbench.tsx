@@ -123,10 +123,14 @@ export default function Workbench() {
 
     // Convert MediaPipe points to Landmark3D format
     // Flip Y axis and scale Z for better 3D visualization
+    // Preserve original coordinates for UV mapping
     const landmarks: Landmark3D[] = mediaPipeMeshData.points.map(point => ({
       x: (point.x - 0.5) * 2,  // Center and scale X: 0-1 -> -1 to 1
       y: -(point.y - 0.5) * 2, // Center, scale and flip Y
       z: (point.z ?? 0) * 0.5, // Scale Z depth
+      // Preserve original normalized coordinates for UV texture mapping
+      originalX: point.x,
+      originalY: point.y,
     }));
 
     // Filter valid tessellation triangles (indices must exist in landmarks)
@@ -787,9 +791,10 @@ export default function Workbench() {
               <FaceMesh3D
                 landmarks={mesh3DData.landmarks}
                 faces={mesh3DData.faces}
-                wireframe={true}
+                wireframe={false}
                 color="#60A5FA"
                 opacity={meshOpacity / 100}
+                imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
               />
             ) : (
               <Viewer3D 

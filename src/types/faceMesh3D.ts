@@ -3,6 +3,9 @@ export interface Landmark3D {
   y: number;
   z: number;
   id?: number;
+  // Original normalized coordinates for UV mapping (0-1)
+  originalX?: number;
+  originalY?: number;
 }
 
 export type TriangleFace = [number, number, number];

@@ -378,8 +378,10 @@ export type Database = {
           error_stage: string | null
           image_url: string
           job_id: string
+          landmarks: Json | null
+          landmarks_count: number | null
           photo_id: string | null
-          status: Database["public"]["Enums"]["job_status"]
+          status: string | null
           timestamp_end: string | null
           timestamp_start: string | null
         }
@@ -390,8 +392,10 @@ export type Database = {
           error_stage?: string | null
           image_url: string
           job_id?: string
+          landmarks?: Json | null
+          landmarks_count?: number | null
           photo_id?: string | null
-          status: Database["public"]["Enums"]["job_status"]
+          status?: string | null
           timestamp_end?: string | null
           timestamp_start?: string | null
         }
@@ -402,8 +406,10 @@ export type Database = {
           error_stage?: string | null
           image_url?: string
           job_id?: string
+          landmarks?: Json | null
+          landmarks_count?: number | null
           photo_id?: string | null
-          status?: Database["public"]["Enums"]["job_status"]
+          status?: string | null
           timestamp_end?: string | null
           timestamp_start?: string | null
         }
@@ -489,7 +495,7 @@ export type Database = {
           photo_id: string | null
           progress: number
           started_at: string
-          status: Database["public"]["Enums"]["simulation_status"]
+          status: string
           version_id: string
         }
         Insert: {
@@ -500,7 +506,7 @@ export type Database = {
           photo_id?: string | null
           progress?: number
           started_at?: string
-          status?: Database["public"]["Enums"]["simulation_status"]
+          status: string
           version_id: string
         }
         Update: {
@@ -511,7 +517,7 @@ export type Database = {
           photo_id?: string | null
           progress?: number
           started_at?: string
-          status?: Database["public"]["Enums"]["simulation_status"]
+          status?: string
           version_id?: string
         }
         Relationships: [
