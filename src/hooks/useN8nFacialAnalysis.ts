@@ -316,9 +316,9 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
         description: 'O processamento será feito em segundo plano.'
       });
 
-      // Send POST to n8n webhook - APENAS case_id, image_url, mode
+      // Send POST to n8n webhook
       console.log('[Analysis] Sending to n8n webhook:', N8N_FACIAL_ANALYSIS_WEBHOOK);
-      console.log('[Analysis] Payload:', { case_id: caseId, image_url: imageUrl, mode: 'clinical' });
+      console.log('[Analysis] Payload:', { case_id: caseId, photo_id: photoId, image_url: imageUrl, mode: 'clinical' });
       
       const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
         method: 'POST',
@@ -327,6 +327,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
         },
         body: JSON.stringify({
           case_id: caseId,
+          photo_id: photoId,
           image_url: imageUrl,
           mode: "clinical",
         }),
