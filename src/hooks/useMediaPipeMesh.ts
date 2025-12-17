@@ -59,13 +59,16 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
   }, [stopPolling]);
 
   // Poll job status and fetch results when completed
-  const pollJobStatus = useCallback(async (jobId: string) => {
+  // Polling por case_id (job mais recente)
+  const pollJobStatus = useCallback(async (caseId: string) => {
     try {
       const { data, error } = await supabase
         .from('facial_analysis_jobs')
-        .select('status, error_message')
-        .eq('job_id', jobId)
-        .single();
+        .select('status, error_message, job_id')
+        .eq('case_id', caseId)
+        .order('timestamp_start', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
       if (error) {
         console.error('Erro ao verificar status:', error);
@@ -135,33 +138,21 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
       setErrorMessage(null);
       setMeshData(null);
       
-      const jobId = crypto.randomUUID();
       currentJobIdRef.current = caseId;
 
       toast.info('Iniciando análise facial...', {
         description: 'O mesh será renderizado automaticamente.'
       });
 
-      // Insert job record for polling
-      await supabase
-        .from('facial_analysis_jobs')
-        .insert({
-          job_id: jobId,
-          case_id: caseId,
-          image_url: imageUrl,
-          status: 'processing',
-          timestamp_start: new Date().toISOString(),
-        });
-
-      // Send to n8n webhook
+      // Send to n8n webhook - APENAS case_id, image_url, mode
+      console.log('[MediaPipeMesh] Sending to n8n:', { case_id: caseId, image_url: imageUrl, mode: 'clinical' });
+      
       const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          job_id: jobId,
           case_id: caseId,
           image_url: imageUrl,
-          photo_id: photoId || null,
           mode: 'clinical',
         }),
       });
@@ -187,10 +178,10 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
         // Response não é JSON - provavelmente processamento assíncrono
       }
 
-      // Start polling for async processing
+      // Start polling for async processing (por case_id)
       pollingCountRef.current = 0;
       pollingRef.current = setInterval(() => {
-        pollJobStatus(jobId);
+        pollJobStatus(caseId);
       }, POLLING_INTERVAL_MS);
 
     } catch (error) {
