@@ -52,13 +52,14 @@ const TexturedMeshGeometry: React.FC<MeshGeometryProps> = ({
     });
 
     // Create UV coordinates from original normalized coordinates
+    // MediaPipe coordinates are 0-1, Three.js expects V flipped once
     const uvs = new Float32Array(landmarks.length * 2);
     landmarks.forEach((landmark, i) => {
-      // Use original coordinates if available, otherwise estimate from position
+      // Use original normalized coordinates for UV (0-1 range)
       const u = landmark.originalX ?? (landmark.x / 2 + 0.5);
-      const v = landmark.originalY ?? (1 - (landmark.y / 2 + 0.5));
-      uvs[i * 2] = u;
-      uvs[i * 2 + 1] = 1 - v; // Flip V for Three.js
+      const v = landmark.originalY ?? (landmark.y / 2 + 0.5);
+      uvs[i * 2] = u;           // U = x original
+      uvs[i * 2 + 1] = 1 - v;   // V = flip Y once for Three.js coordinate system
     });
 
     // Create indices array from faces

@@ -27,7 +27,7 @@ import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
 import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
-import { MEDIAPIPE_TESSELLATION } from '@/types/mediapipeMesh';
+import { MEDIAPIPE_FACE_TESSELLATION } from '@/types/mediapipeTessellation';
 import type { Landmark3D, TriangleFace } from '@/types/faceMesh3D';
 
 type ViewMode = '2d' | '3d' | 'compare';
@@ -135,7 +135,7 @@ export default function Workbench() {
 
     // Filter valid tessellation triangles (indices must exist in landmarks)
     const maxIndex = landmarks.length - 1;
-    const faces: TriangleFace[] = MEDIAPIPE_TESSELLATION.filter(
+    const faces: TriangleFace[] = MEDIAPIPE_FACE_TESSELLATION.filter(
       ([a, b, c]) => a <= maxIndex && b <= maxIndex && c <= maxIndex
     );
 
