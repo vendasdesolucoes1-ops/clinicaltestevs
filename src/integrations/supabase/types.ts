@@ -583,7 +583,14 @@ export type Database = {
       case_status: "ativo" | "arquivado" | "em_processamento"
       case_type: "queimadura" | "trauma"
       export_format: "png" | "jpg" | "pdf"
-      job_status: "pending" | "processing" | "failed" | "success"
+      job_status:
+        | "pending"
+        | "processing"
+        | "failed"
+        | "success"
+        | "landmarks_ready"
+        | "mesh_generated"
+        | "symmetry_calculated"
       photo_angle: "frente" | "perfil_d" | "perfil_e" | "tres_quartos"
       simulation_status: "processando" | "pronto" | "falhou"
       version_type: "base" | "A" | "B"
@@ -718,7 +725,15 @@ export const Constants = {
       case_status: ["ativo", "arquivado", "em_processamento"],
       case_type: ["queimadura", "trauma"],
       export_format: ["png", "jpg", "pdf"],
-      job_status: ["pending", "processing", "failed", "success"],
+      job_status: [
+        "pending",
+        "processing",
+        "failed",
+        "success",
+        "landmarks_ready",
+        "mesh_generated",
+        "symmetry_calculated",
+      ],
       photo_angle: ["frente", "perfil_d", "perfil_e", "tres_quartos"],
       simulation_status: ["processando", "pronto", "falhou"],
       version_type: ["base", "A", "B"],
