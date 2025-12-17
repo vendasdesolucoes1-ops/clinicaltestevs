@@ -14,11 +14,9 @@ import { Viewer3D } from '@/components/workbench/Viewer3D';
 import FaceMesh3D from '@/components/workbench/FaceMesh3D';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
-import { AnalysisHistory } from '@/components/workbench/AnalysisHistory';
 import { CollapsiblePanel } from '@/components/workbench/CollapsiblePanel';
 import { CanvasContextBar } from '@/components/workbench/CanvasContextBar';
 import { WorkbenchHeader } from '@/components/workbench/WorkbenchHeader';
-import { WorkflowProgressPanel } from '@/components/workbench/WorkflowProgressPanel';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
@@ -854,39 +852,25 @@ export default function Workbench() {
             onCancelConnection={cancelConnection}
             isAnalyzingFace={isAnalyzing}
             symmetryResult={symmetryResult}
+            caseId={caseData?.id}
+            onRetryAnalysis={retryAnalysis}
+            onCancelAnalysis={cancelAnalysis}
+            onLoadAnalysis={loadExistingAnalysis}
+            onAnalysisDeleted={async () => {
+              if (!caseData) return;
+              const { data: analysesData } = await supabase
+                .from('facial_analyses')
+                .select('photo_id')
+                .eq('case_id', caseData.id);
+
+              if (analysesData) {
+                setAnalyzedPhotoIds(new Set(analysesData.map((a) => a.photo_id)));
+              }
+            }}
             onGetCanvasImage={() => canvasRef.current?.getCanvasDataUrl() ?? null}
             caseName={caseData?.codename}
-            currentPhotoAngle={caseData?.photos.find(p => p.url === currentImageUrl)?.angle}
+            currentPhotoAngle={caseData?.photos.find((p) => p.url === currentImageUrl)?.angle}
           />
-          
-          {/* Workflow Progress Panel */}
-          {caseData && (
-            <WorkflowProgressPanel 
-              caseId={caseData.id}
-              onRetry={retryAnalysis}
-              onCancel={cancelAnalysis}
-            />
-          )}
-          
-          {/* Analysis History */}
-          {caseData && (
-            <div className="p-3 border-t border-border">
-              <AnalysisHistory 
-                caseId={caseData.id} 
-                onLoadAnalysis={loadExistingAnalysis}
-                onAnalysisDeleted={async () => {
-                  const { data: analysesData } = await supabase
-                    .from('facial_analyses')
-                    .select('photo_id')
-                    .eq('case_id', caseData.id);
-                  
-                  if (analysesData) {
-                    setAnalyzedPhotoIds(new Set(analysesData.map(a => a.photo_id)));
-                  }
-                }}
-              />
-            </div>
-          )}
         </div>
       </CollapsiblePanel>
     </div>
