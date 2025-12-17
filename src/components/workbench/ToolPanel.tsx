@@ -159,8 +159,8 @@ export function ToolPanel({
   }, [onTriggerSimulation, simParams.targetVersion]);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+    <div className="h-full min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1">
         {/* Tools Grid */}
         <div className="p-3 border-b border-border">
           <div className="grid grid-cols-4 gap-1.5">

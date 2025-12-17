@@ -33,7 +33,7 @@ export function CollapsiblePanel({
   return (
     <div
       className={cn(
-        "shrink-0 flex flex-col transition-all duration-300 ease-in-out relative",
+        "shrink-0 h-full min-h-0 flex flex-col overflow-hidden transition-all duration-300 ease-in-out relative",
         isOpen ? width : "w-10",
         side === 'left' ? "border-r border-border" : "border-l border-border"
       )}
