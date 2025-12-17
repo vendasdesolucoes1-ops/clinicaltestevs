@@ -12,6 +12,7 @@ import { ToolPanel, type ToolType } from '@/components/workbench/ToolPanel';
 import { SimulationCanvas, SimulationCanvasRef } from '@/components/workbench/SimulationCanvas';
 import { Viewer3D } from '@/components/workbench/Viewer3D';
 import FaceMesh3D from '@/components/workbench/FaceMesh3D';
+import HybridFaceMesh3D from '@/components/workbench/HybridFaceMesh3D';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
 import { CollapsiblePanel } from '@/components/workbench/CollapsiblePanel';
@@ -787,14 +788,12 @@ export default function Workbench() {
           )}
           
           {viewMode === '3d' && (
-            mesh3DData.landmarks.length > 0 && mesh3DData.faces.length > 0 ? (
-              <FaceMesh3D
+            mesh3DData.landmarks.length > 0 ? (
+              <HybridFaceMesh3D
                 landmarks={mesh3DData.landmarks}
-                faces={mesh3DData.faces}
-                wireframe={false}
-                color="#60A5FA"
-                opacity={meshOpacity / 100}
                 imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
+                wireframe={false}
+                opacity={meshOpacity / 100}
               />
             ) : (
               <Viewer3D 
