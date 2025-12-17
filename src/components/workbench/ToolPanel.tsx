@@ -28,7 +28,6 @@ import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -161,7 +160,7 @@ export function ToolPanel({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-      <ScrollArea className="flex-1 h-0 min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         {/* Tools Grid */}
         <div className="p-3 border-b border-border">
           <div className="grid grid-cols-4 gap-1.5">
@@ -733,7 +732,7 @@ export function ToolPanel({
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
