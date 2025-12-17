@@ -11,7 +11,7 @@ import { MEDIAPIPE_DENSE_CONNECTIONS } from '@/types/mediapipeMesh';
 export type AnalysisJobStatus = 'idle' | 'processing' | 'completed' | 'failed';
 
 interface AnalysisJob {
-  jobId: string;
+  jobId?: string;  // Opcional - gerado pelo backend
   caseId: string;
   status: AnalysisJobStatus;
   errorMessage?: string;
@@ -300,12 +300,8 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       lastImageUrlRef.current = imageUrl;
       lastPhotoIdRef.current = photoId;
 
-      // Generate job ID
-      const jobId = crypto.randomUUID();
-
-      // Set initial job state
+      // Set initial job state (sem job_id - será gerado pelo backend)
       setAnalysisJob({
-        jobId,
         caseId,
         status: 'processing',
         startedAt: new Date().toISOString(),
@@ -320,25 +316,9 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
         description: 'O processamento será feito em segundo plano.'
       });
 
-      // Insert job record in database for polling
-      const { error: insertError } = await supabase
-        .from('facial_analysis_jobs')
-        .insert({
-          job_id: jobId,
-          case_id: caseId,
-          image_url: imageUrl,
-          status: 'processing',
-          timestamp_start: new Date().toISOString(),
-        });
-
-      if (insertError) {
-        console.error('Erro ao criar job no banco:', insertError);
-        // Continue anyway - n8n callback will create if needed
-      }
-
-      // Send POST to n8n webhook
+      // Send POST to n8n webhook - APENAS case_id, image_url, mode
       console.log('[Analysis] Sending to n8n webhook:', N8N_FACIAL_ANALYSIS_WEBHOOK);
-      console.log('[Analysis] Payload:', { job_id: jobId, case_id: caseId, image_url: imageUrl, photo_id: photoId });
+      console.log('[Analysis] Payload:', { case_id: caseId, image_url: imageUrl, mode: 'clinical' });
       
       const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
         method: 'POST',
@@ -346,10 +326,8 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          job_id: jobId,
           case_id: caseId,
           image_url: imageUrl,
-          photo_id: photoId || null,
           mode: "clinical",
         }),
       });
