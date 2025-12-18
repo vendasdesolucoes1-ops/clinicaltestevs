@@ -118,7 +118,7 @@ const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: st
   { id: 'incision', icon: Scissors, label: 'Incisão', tooltip: 'Desenhe linhas de corte cirúrgico. Configure tipo e profundidade.', shortcut: '4' },
   { id: 'suture', icon: PenTool, label: 'Sutura', tooltip: 'Simule pontos de sutura ao longo de uma linha.', shortcut: '5' },
   { id: 'annotate', icon: Type, label: 'Anotar', tooltip: 'Adicione textos, setas e marcações livres.', shortcut: '6' },
-  { id: 'measure', icon: Ruler, label: 'Medir', tooltip: 'Meça distâncias entre dois pontos (em mm se calibrado).', shortcut: '8' },
+  { id: 'measure', icon: Ruler, label: 'Medir', tooltip: 'Clique em pontos do mesh facial para medir distâncias entre landmarks (em mm se calibrado).', shortcut: '8' },
   { id: 'eraser', icon: Eraser, label: 'Borracha', tooltip: 'Apague marcações individuais.', shortcut: '7' },
 ];
 
