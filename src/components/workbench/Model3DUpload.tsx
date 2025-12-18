@@ -89,14 +89,15 @@ export function Model3DUpload({
   }, []);
 
   const validateFile = (file: File): boolean => {
-    const validExtensions = ['.glb', '.gltf'];
+    const validExtensions = ['.glb', '.gltf', '.zip'];
     const fileExtension = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
     
     if (!validExtensions.includes(fileExtension)) {
       return false;
     }
     
-    const maxSize = 100 * 1024 * 1024; // 100MB
+    // ZIP files can be larger (up to 200MB), GLB/GLTF up to 100MB
+    const maxSize = fileExtension === '.zip' ? 200 * 1024 * 1024 : 100 * 1024 * 1024;
     return file.size <= maxSize;
   };
 
@@ -158,8 +159,8 @@ export function Model3DUpload({
             </TooltipTrigger>
             <TooltipContent side="left" className="max-w-xs">
               <p className="text-xs">
-                Exporte seu scan do Polycam como <strong>GLTF</strong> ou <strong>GLB</strong> 
-                com texturas incluídas. O arquivo será usado para visualização 3D real do paciente.
+                Exporte seu scan do Polycam como <strong>GLB</strong>, <strong>GLTF</strong> ou <strong>ZIP</strong> (com GLTF dentro).
+                O arquivo será usado para visualização 3D real do paciente.
               </p>
             </TooltipContent>
           </Tooltip>
@@ -255,12 +256,12 @@ export function Model3DUpload({
               {isDragOver ? 'Solte o arquivo aqui' : 'Arraste ou clique para upload'}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              GLB ou GLTF • Máximo 100MB
+              GLB, GLTF ou ZIP • Máximo 100MB (ZIP até 200MB)
             </p>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".glb,.gltf"
+              accept=".glb,.gltf,.zip"
               className="hidden"
               onChange={handleFileSelect}
             />
