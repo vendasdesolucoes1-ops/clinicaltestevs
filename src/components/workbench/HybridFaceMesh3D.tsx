@@ -5,10 +5,15 @@ import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { RotateCcw, ZoomIn, ZoomOut, Grid3X3, Layers, Settings2, User, Square, MoveVertical, Zap, Scale, Maximize } from 'lucide-react';
+import { RotateCcw, ZoomIn, ZoomOut, Grid3X3, Layers, Settings2, User, Square, MoveVertical, Zap, Scale, Maximize, Move, ArrowUpDown, ArrowLeftRight } from 'lucide-react';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Switch } from '@/components/ui/switch';
 import type { Landmark3D } from '@/types/faceMesh3D';
+
+// ============================================================================
+// TIPOS E INTERFACES
+// ============================================================================
 
 interface DeformationParams {
   intensity: number;
@@ -16,10 +21,94 @@ interface DeformationParams {
   depthScale: number;
 }
 
+interface UVAdjustments {
+  scaleX: number;
+  scaleY: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+interface AnatomicalProportions {
+  eyeDistance: number;         // Distância entre centros dos olhos
+  faceWidth: number;           // Largura do rosto (jawline)
+  faceHeight: number;          // Altura do rosto (testa ao queixo)
+  noseWidth: number;           // Largura do nariz (asas)
+  mouthWidth: number;          // Largura da boca
+  eyeLevel: number;            // Posição vertical dos olhos (0-1)
+  noseLevel: number;           // Posição vertical do nariz (0-1)
+  mouthLevel: number;          // Posição vertical da boca (0-1)
+  faceCenter: { x: number; y: number };  // Centro do rosto
+}
+
+interface FaceROI {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+}
+
 type FacialPreset = 'custom' | 'oval' | 'quadrado' | 'alongado';
 type MeshDensity = 'rapido' | 'balanceado' | 'maximo';
 
-// Presets otimizados para tipos faciais comuns
+// ============================================================================
+// LANDMARKS ANATÔMICOS - MEDIAPIPE (468 PONTOS)
+// ============================================================================
+// Índices específicos para medições anatômicas precisas
+
+const ANATOMICAL_LANDMARKS = {
+  // Olhos - centros para distância interocular
+  leftEyeCenter: 468,        // Centro do olho esquerdo (calculado)
+  rightEyeCenter: 473,       // Centro do olho direito (calculado)
+  leftEyeInner: 133,
+  leftEyeOuter: 33,
+  rightEyeInner: 362,
+  rightEyeOuter: 263,
+  
+  // Nariz
+  noseTip: 1,
+  noseBridge: 6,
+  noseLeft: 129,             // Asa esquerda do nariz
+  noseRight: 358,            // Asa direita do nariz
+  
+  // Boca
+  mouthLeft: 61,
+  mouthRight: 291,
+  mouthTop: 0,
+  mouthBottom: 17,
+  
+  // Contorno facial
+  foreheadTop: 10,
+  chin: 152,
+  leftJawline: 234,
+  rightJawline: 454,
+  leftTemple: 127,
+  rightTemple: 356,
+  
+  // Sobrancelhas
+  leftEyebrowInner: 55,
+  leftEyebrowOuter: 105,
+  rightEyebrowInner: 285,
+  rightEyebrowOuter: 334,
+};
+
+// Proporções de referência do modelo LeePerrySmith (normalizadas)
+const GLTF_REFERENCE_PROPORTIONS: AnatomicalProportions = {
+  eyeDistance: 0.24,
+  faceWidth: 0.58,
+  faceHeight: 0.75,
+  noseWidth: 0.12,
+  mouthWidth: 0.18,
+  eyeLevel: 0.38,
+  noseLevel: 0.55,
+  mouthLevel: 0.68,
+  faceCenter: { x: 0.5, y: 0.45 },
+};
+
+// Presets otimizados para tipos faciais
 const FACIAL_PRESETS: Record<Exclude<FacialPreset, 'custom'>, { params: DeformationParams; description: string }> = {
   oval: {
     params: { intensity: 0.45, influenceRadius: 0.55, depthScale: 0.5 },
@@ -35,101 +124,188 @@ const FACIAL_PRESETS: Record<Exclude<FacialPreset, 'custom'>, { params: Deformat
   },
 };
 
-// Descrições das densidades de mesh
+// Descrições das densidades
 const DENSITY_INFO: Record<MeshDensity, { points: number; description: string }> = {
   rapido: { points: 24, description: 'Rápido - 24 pontos principais' },
   balanceado: { points: 114, description: 'Balanceado - 114 pontos estratégicos' },
   maximo: { points: 468, description: 'Máximo - Todos os 468 landmarks' },
 };
 
-interface HybridFaceMesh3DProps {
-  landmarks: Landmark3D[];
-  imageUrl?: string;
-  wireframe?: boolean;
-  opacity?: number;
+// ============================================================================
+// FUNÇÕES DE MEDIÇÃO ANATÔMICA
+// ============================================================================
+
+function distance2D(p1: { x: number; y: number }, p2: { x: number; y: number }): number {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function getLandmarkSafe(landmarks: Landmark3D[], idx: number): Landmark3D | null {
+  return idx < landmarks.length ? landmarks[idx] : null;
+}
+
+/**
+ * Calcula proporções anatômicas do rosto do paciente a partir dos landmarks MediaPipe
+ */
+function calculatePatientProportions(landmarks: Landmark3D[]): AnatomicalProportions | null {
+  if (landmarks.length < 400) return null;
+  
+  const getL = (idx: number) => getLandmarkSafe(landmarks, idx);
+  
+  // Pontos essenciais
+  const leftEyeInner = getL(ANATOMICAL_LANDMARKS.leftEyeInner);
+  const leftEyeOuter = getL(ANATOMICAL_LANDMARKS.leftEyeOuter);
+  const rightEyeInner = getL(ANATOMICAL_LANDMARKS.rightEyeInner);
+  const rightEyeOuter = getL(ANATOMICAL_LANDMARKS.rightEyeOuter);
+  const noseTip = getL(ANATOMICAL_LANDMARKS.noseTip);
+  const noseLeft = getL(ANATOMICAL_LANDMARKS.noseLeft);
+  const noseRight = getL(ANATOMICAL_LANDMARKS.noseRight);
+  const mouthLeft = getL(ANATOMICAL_LANDMARKS.mouthLeft);
+  const mouthRight = getL(ANATOMICAL_LANDMARKS.mouthRight);
+  const foreheadTop = getL(ANATOMICAL_LANDMARKS.foreheadTop);
+  const chin = getL(ANATOMICAL_LANDMARKS.chin);
+  const leftJawline = getL(ANATOMICAL_LANDMARKS.leftJawline);
+  const rightJawline = getL(ANATOMICAL_LANDMARKS.rightJawline);
+  
+  // Verificar pontos essenciais
+  if (!leftEyeInner || !leftEyeOuter || !rightEyeInner || !rightEyeOuter ||
+      !noseTip || !noseLeft || !noseRight || !mouthLeft || !mouthRight ||
+      !foreheadTop || !chin || !leftJawline || !rightJawline) {
+    return null;
+  }
+  
+  // Calcular centros dos olhos
+  const leftEyeCenter = {
+    x: (leftEyeInner.x + leftEyeOuter.x) / 2,
+    y: (leftEyeInner.y + leftEyeOuter.y) / 2,
+  };
+  const rightEyeCenter = {
+    x: (rightEyeInner.x + rightEyeOuter.x) / 2,
+    y: (rightEyeInner.y + rightEyeOuter.y) / 2,
+  };
+  
+  // Calcular todas as medidas (normalizadas 0-1)
+  const eyeDistance = distance2D(leftEyeCenter, rightEyeCenter);
+  const faceWidth = distance2D(leftJawline, rightJawline);
+  const faceHeight = distance2D(foreheadTop, chin);
+  const noseWidth = distance2D(noseLeft, noseRight);
+  const mouthWidth = distance2D(mouthLeft, mouthRight);
+  
+  // Calcular posições verticais relativas (proporção do topo ao queixo)
+  const eyeLevel = ((leftEyeCenter.y + rightEyeCenter.y) / 2 - foreheadTop.y) / faceHeight;
+  const noseLevel = (noseTip.y - foreheadTop.y) / faceHeight;
+  const mouthLevel = ((mouthLeft.y + mouthRight.y) / 2 - foreheadTop.y) / faceHeight;
+  
+  // Calcular centro do rosto
+  const faceCenter = {
+    x: (leftJawline.x + rightJawline.x) / 2,
+    y: (foreheadTop.y + chin.y) / 2,
+  };
+  
+  return {
+    eyeDistance,
+    faceWidth,
+    faceHeight,
+    noseWidth,
+    mouthWidth,
+    eyeLevel,
+    noseLevel,
+    mouthLevel,
+    faceCenter,
+  };
+}
+
+/**
+ * Calcula Face ROI (bounding box) a partir dos landmarks
+ */
+function calculateFaceROI(landmarks: Landmark3D[]): FaceROI | null {
+  if (landmarks.length === 0) return null;
+  
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  
+  landmarks.forEach(lm => {
+    minX = Math.min(minX, lm.x);
+    maxX = Math.max(maxX, lm.x);
+    minY = Math.min(minY, lm.y);
+    maxY = Math.max(maxY, lm.y);
+  });
+  
+  // Adicionar padding de 5% para margem
+  const paddingX = (maxX - minX) * 0.05;
+  const paddingY = (maxY - minY) * 0.05;
+  minX = Math.max(0, minX - paddingX);
+  maxX = Math.min(1, maxX + paddingX);
+  minY = Math.max(0, minY - paddingY);
+  maxY = Math.min(1, maxY + paddingY);
+  
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+/**
+ * Calcula fatores de escala para adaptar o modelo às proporções do paciente
+ */
+function calculateScaleFactors(
+  patientProps: AnatomicalProportions,
+  referenceProps: AnatomicalProportions
+): { scaleX: number; scaleY: number; offsetY: number } {
+  // Fator de escala horizontal baseado na largura do rosto
+  const scaleX = patientProps.faceWidth / referenceProps.faceWidth;
+  
+  // Fator de escala vertical baseado na altura do rosto
+  const scaleY = patientProps.faceHeight / referenceProps.faceHeight;
+  
+  // Offset vertical para alinhar olhos/nariz/boca
+  const avgPatientLevel = (patientProps.eyeLevel + patientProps.noseLevel + patientProps.mouthLevel) / 3;
+  const avgRefLevel = (referenceProps.eyeLevel + referenceProps.noseLevel + referenceProps.mouthLevel) / 3;
+  const offsetY = (avgPatientLevel - avgRefLevel) * 0.5;
+  
+  return { scaleX, scaleY, offsetY };
 }
 
 // ============================================================================
 // LANDMARK MAPPINGS POR DENSIDADE
 // ============================================================================
 
-// RÁPIDO (24 pontos) - Landmarks principais para deformação básica
 const LANDMARK_MAPPING_RAPIDO = {
-  noseTip: 1,
-  noseBottom: 2,
-  noseBridge: 6,
-  leftEyeInner: 133,
-  leftEyeOuter: 33,
-  rightEyeInner: 362,
-  rightEyeOuter: 263,
-  leftEyebrowInner: 55,
-  leftEyebrowOuter: 105,
-  rightEyebrowInner: 285,
-  rightEyebrowOuter: 334,
-  mouthLeft: 61,
-  mouthRight: 291,
-  mouthTop: 0,
-  mouthBottom: 17,
-  upperLipTop: 13,
-  lowerLipBottom: 14,
-  chin: 152,
-  leftCheek: 234,
-  rightCheek: 454,
-  foreheadCenter: 10,
-  leftJaw: 172,
-  rightJaw: 397,
-  foreheadTop: 151,
+  noseTip: 1, noseBottom: 2, noseBridge: 6,
+  leftEyeInner: 133, leftEyeOuter: 33, rightEyeInner: 362, rightEyeOuter: 263,
+  leftEyebrowInner: 55, leftEyebrowOuter: 105, rightEyebrowInner: 285, rightEyebrowOuter: 334,
+  mouthLeft: 61, mouthRight: 291, mouthTop: 0, mouthBottom: 17,
+  upperLipTop: 13, lowerLipBottom: 14, chin: 152,
+  leftCheek: 234, rightCheek: 454, foreheadCenter: 10,
+  leftJaw: 172, rightJaw: 397, foreheadTop: 151,
 };
 
-// BALANCEADO (114 pontos) - Cobertura estratégica de todas as regiões
 const LANDMARK_MAPPING_BALANCEADO = {
-  // Contorno facial / Jawline (17 pontos)
   jawline: [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400],
-  
-  // Olho esquerdo (16 pontos)
   leftEye: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
-  
-  // Olho direito (16 pontos)
   rightEye: [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
-  
-  // Sobrancelha esquerda (8 pontos)
   leftEyebrow: [70, 63, 105, 66, 107, 55, 65, 52],
-  
-  // Sobrancelha direita (8 pontos)
   rightEyebrow: [336, 296, 334, 293, 300, 285, 295, 282],
-  
-  // Nariz (15 pontos)
   nose: [1, 2, 6, 8, 168, 197, 195, 5, 4, 19, 94, 370, 462, 250, 290],
-  
-  // Boca externa (14 pontos)
   mouthOuter: [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405],
-  
-  // Boca interna / lábios (8 pontos)
   mouthInner: [78, 191, 80, 81, 82, 13, 312, 311],
-  
-  // Bochechas (8 pontos)
   cheeks: [234, 93, 132, 58, 454, 323, 361, 288],
-  
-  // Testa (4 pontos)
   forehead: [10, 151, 9, 8],
 };
 
-// Pesos por região anatômica (quanto maior, mais preciso)
 const REGION_WEIGHTS: Record<string, number> = {
-  jawline: 0.9,      // Alta precisão para contorno
-  leftEye: 1.0,      // Máxima precisão para olhos
-  rightEye: 1.0,
-  leftEyebrow: 0.85,
-  rightEyebrow: 0.85,
-  nose: 0.95,        // Alta precisão para nariz
-  mouthOuter: 0.9,
-  mouthInner: 0.95,
-  cheeks: 0.7,       // Menor precisão (área suave)
-  forehead: 0.6,     // Menor precisão (área grande)
-  default: 0.8,
+  jawline: 0.9, leftEye: 1.0, rightEye: 1.0,
+  leftEyebrow: 0.85, rightEyebrow: 0.85, nose: 0.95,
+  mouthOuter: 0.9, mouthInner: 0.95, cheeks: 0.7, forehead: 0.6, default: 0.8,
 };
 
-// Função para obter landmarks baseado na densidade
 function getLandmarksByDensity(
   density: MeshDensity, 
   allLandmarks: Landmark3D[]
@@ -138,7 +314,6 @@ function getLandmarksByDensity(
   const weights: number[] = [];
   
   if (density === 'rapido') {
-    // 24 pontos principais
     Object.values(LANDMARK_MAPPING_RAPIDO).forEach(idx => {
       if (idx < allLandmarks.length) {
         result.push(allLandmarks[idx]);
@@ -146,7 +321,6 @@ function getLandmarksByDensity(
       }
     });
   } else if (density === 'balanceado') {
-    // 114 pontos estratégicos com pesos por região
     Object.entries(LANDMARK_MAPPING_BALANCEADO).forEach(([region, indices]) => {
       const regionWeight = REGION_WEIGHTS[region] || REGION_WEIGHTS.default;
       indices.forEach(idx => {
@@ -157,10 +331,8 @@ function getLandmarksByDensity(
       });
     });
   } else {
-    // Máximo - todos os 468 landmarks
-    allLandmarks.forEach((lm, idx) => {
+    allLandmarks.forEach((lm) => {
       result.push(lm);
-      // Atribuir pesos baseados na posição Y (área dos olhos tem mais peso)
       const yWeight = lm.y > 0.3 && lm.y < 0.6 ? 1.0 : 0.75;
       weights.push(yWeight);
     });
@@ -170,8 +342,15 @@ function getLandmarksByDensity(
 }
 
 // ============================================================================
-// COMPONENTE DE MESH DEFORMADO
+// COMPONENTE DE MESH COM ADAPTAÇÃO ANATÔMICA
 // ============================================================================
+
+interface HybridFaceMesh3DProps {
+  landmarks: Landmark3D[];
+  imageUrl?: string;
+  wireframe?: boolean;
+  opacity?: number;
+}
 
 const DeformedGLTFMesh: React.FC<{
   landmarks: Landmark3D[];
@@ -180,12 +359,15 @@ const DeformedGLTFMesh: React.FC<{
   opacity: number;
   deformParams: DeformationParams;
   density: MeshDensity;
-}> = ({ landmarks, imageUrl, wireframe, opacity, deformParams, density }) => {
+  adaptProportions: boolean;
+  uvAdjustments: UVAdjustments;
+}> = ({ landmarks, imageUrl, wireframe, opacity, deformParams, density, adaptProportions, uvAdjustments }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const { scene } = useGLTF('/models/LeePerrySmith.glb');
   
   const texture = imageUrl ? useLoader(THREE.TextureLoader, imageUrl) : null;
   
+  // Extrair geometria original do GLTF
   const originalGeometry = useMemo(() => {
     let geometry: THREE.BufferGeometry | null = null;
     scene.traverse((child) => {
@@ -196,14 +378,34 @@ const DeformedGLTFMesh: React.FC<{
     return geometry;
   }, [scene]);
 
+  // Calcular proporções do paciente
+  const patientProportions = useMemo(() => {
+    return calculatePatientProportions(landmarks);
+  }, [landmarks]);
+  
+  // Calcular Face ROI
+  const faceROI = useMemo(() => {
+    return calculateFaceROI(landmarks);
+  }, [landmarks]);
+  
+  // Calcular fatores de escala anatômica
+  const scaleFactors = useMemo(() => {
+    if (!patientProportions || !adaptProportions) {
+      return { scaleX: 1, scaleY: 1, offsetY: 0 };
+    }
+    return calculateScaleFactors(patientProportions, GLTF_REFERENCE_PROPORTIONS);
+  }, [patientProportions, adaptProportions]);
+
   // Obter landmarks filtrados com pesos
   const { landmarks: keyLandmarks, weights: landmarkWeights } = useMemo(() => {
     return getLandmarksByDensity(density, landmarks);
   }, [landmarks, density]);
 
-  // Create deformed geometry with region-weighted algorithm
-  const deformedGeometry = useMemo(() => {
-    if (!originalGeometry || keyLandmarks.length === 0) return originalGeometry;
+  // ============================================================================
+  // GEOMETRIA ADAPTADA POR PROPORÇÕES ANATÔMICAS
+  // ============================================================================
+  const adaptedGeometry = useMemo(() => {
+    if (!originalGeometry) return null;
     
     const geo = originalGeometry.clone();
     const positions = geo.attributes.position;
@@ -213,8 +415,78 @@ const DeformedGLTFMesh: React.FC<{
     const bbox = geo.boundingBox!;
     const size = new THREE.Vector3();
     bbox.getSize(size);
+    const center = new THREE.Vector3();
+    bbox.getCenter(center);
     
-    // Calculate landmark bounds
+    if (adaptProportions && patientProportions) {
+      // Aplicar escala diferenciada por região anatômica
+      const { scaleX, scaleY, offsetY } = scaleFactors;
+      
+      for (let i = 0; i < posArray.length; i += 3) {
+        const vx = posArray[i];
+        const vy = posArray[i + 1];
+        const vz = posArray[i + 2];
+        
+        // Normalizar posição do vértice
+        const nx = (vx - center.x) / (size.x / 2);
+        const ny = (vy - center.y) / (size.y / 2);
+        
+        // Calcular fator de escala regional baseado na posição Y
+        // Área dos olhos: escala baseada na distância interocular
+        // Área da boca: escala baseada na largura da boca
+        let localScaleX = scaleX;
+        let localScaleY = scaleY;
+        
+        // Região dos olhos (terço superior)
+        if (ny > 0.1 && ny < 0.5) {
+          const eyeScaleRatio = patientProportions.eyeDistance / GLTF_REFERENCE_PROPORTIONS.eyeDistance;
+          localScaleX = localScaleX * 0.5 + eyeScaleRatio * 0.5;
+        }
+        
+        // Região da boca (terço inferior)
+        if (ny < -0.2) {
+          const mouthScaleRatio = patientProportions.mouthWidth / GLTF_REFERENCE_PROPORTIONS.mouthWidth;
+          localScaleX = localScaleX * 0.6 + mouthScaleRatio * 0.4;
+        }
+        
+        // Região do nariz (centro)
+        if (ny > -0.2 && ny < 0.1 && Math.abs(nx) < 0.3) {
+          const noseScaleRatio = patientProportions.noseWidth / GLTF_REFERENCE_PROPORTIONS.noseWidth;
+          localScaleX = localScaleX * 0.7 + noseScaleRatio * 0.3;
+        }
+        
+        // Aplicar transformação com suavização
+        const blendFactor = 0.7; // Quanto da transformação aplicar (evitar distorção excessiva)
+        const finalScaleX = 1 + (localScaleX - 1) * blendFactor;
+        const finalScaleY = 1 + (localScaleY - 1) * blendFactor;
+        
+        posArray[i] = center.x + nx * (size.x / 2) * finalScaleX;
+        posArray[i + 1] = center.y + ny * (size.y / 2) * finalScaleY + offsetY * size.y * 0.1;
+        // Z permanece inalterado na adaptação de proporções
+      }
+      
+      positions.needsUpdate = true;
+    }
+    
+    return geo;
+  }, [originalGeometry, patientProportions, scaleFactors, adaptProportions]);
+
+  // ============================================================================
+  // GEOMETRIA DEFORMADA POR LANDMARKS (aplica após adaptação de proporções)
+  // ============================================================================
+  const deformedGeometry = useMemo(() => {
+    if (!adaptedGeometry || keyLandmarks.length === 0) return adaptedGeometry;
+    
+    const geo = adaptedGeometry.clone();
+    const positions = geo.attributes.position;
+    const posArray = positions.array as Float32Array;
+    
+    geo.computeBoundingBox();
+    const bbox = geo.boundingBox!;
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+    
+    // Calcular bounds dos landmarks
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
@@ -241,12 +513,10 @@ const DeformedGLTFMesh: React.FC<{
     };
     
     const { intensity, influenceRadius, depthScale } = deformParams;
-    
-    // Ajustar falloff baseado na densidade (mais pontos = falloff mais apertado)
     const densityFactor = density === 'maximo' ? 1.5 : density === 'balanceado' ? 1.0 : 0.7;
     const falloffFactor = (2 + (1 - influenceRadius) * 18) * densityFactor;
     
-    // Apply deformation with region weights
+    // Aplicar deformação
     for (let i = 0; i < posArray.length; i += 3) {
       const vx = posArray[i];
       const vy = posArray[i + 1];
@@ -269,7 +539,6 @@ const DeformedGLTFMesh: React.FC<{
         const dy = ny - (1 - lny);
         const dist = Math.sqrt(dx * dx + dy * dy);
         
-        // Peso base por distância + peso da região
         const distWeight = Math.exp(-dist * dist * falloffFactor);
         const combinedWeight = distWeight * regionWeight;
         
@@ -287,7 +556,6 @@ const DeformedGLTFMesh: React.FC<{
       });
       
       if (totalWeight > 0) {
-        // Interpolação suave para evitar artefatos
         const smoothFactor = Math.min(1.0, totalWeight * 2);
         posArray[i] += (dispX / totalWeight) * smoothFactor;
         posArray[i + 1] += (dispY / totalWeight) * smoothFactor;
@@ -299,6 +567,7 @@ const DeformedGLTFMesh: React.FC<{
     geo.computeVertexNormals();
     geo.center();
     
+    // Normalizar tamanho
     geo.computeBoundingBox();
     const newBbox = geo.boundingBox!;
     const newSize = new THREE.Vector3();
@@ -310,17 +579,13 @@ const DeformedGLTFMesh: React.FC<{
     }
     
     return geo;
-  }, [originalGeometry, keyLandmarks, landmarkWeights, deformParams, density]);
+  }, [adaptedGeometry, keyLandmarks, landmarkWeights, deformParams, density]);
 
   // ============================================================================
-  // UV MAPPING GUIADO POR LANDMARKS
+  // UV MAPPING COM PROJEÇÃO FRONTAL E FACE ROI
   // ============================================================================
-  // Para cada vértice 3D, encontra os landmarks mais próximos e interpola
-  // suas coordenadas UV originais (da foto 2D) para criar correspondência correta
-  // ============================================================================
-  
   const projectedGeometry = useMemo(() => {
-    if (!deformedGeometry || keyLandmarks.length === 0) return null;
+    if (!deformedGeometry) return null;
     
     const geo = deformedGeometry.clone();
     const positions = geo.attributes.position.array as Float32Array;
@@ -330,92 +595,33 @@ const DeformedGLTFMesh: React.FC<{
     const size = new THREE.Vector3();
     bbox.getSize(size);
     
-    // Preparar landmarks com suas coordenadas originais de UV (da foto)
-    // e posições 3D normalizadas no espaço do modelo
-    const landmarkData = keyLandmarks.map((lm, idx) => {
-      // Coordenadas UV originais da foto (0-1)
-      // lm.x e lm.y são normalizados 0-1 vindos do MediaPipe
-      const originalU = lm.x;
-      const originalV = 1 - lm.y; // Inverter Y para UV do Three.js
-      
-      // Posição 3D normalizada no espaço do modelo
-      const pos3D = {
-        x: (lm.x - 0.5) * size.x,
-        y: (lm.y - 0.5) * size.y,
-        z: lm.z * (size.z || 0.5)
-      };
-      
-      return {
-        originalU,
-        originalV,
-        pos3D,
-        weight: landmarkWeights[idx] || 1.0
-      };
-    });
-    
     const uvs = new Float32Array((positions.length / 3) * 2);
-    const NUM_NEAREST = 6; // Quantidade de landmarks para interpolação
-    const FALLOFF_POWER = 2.5; // Controla suavidade da interpolação
     
     for (let i = 0; i < positions.length; i += 3) {
       const vx = positions[i];
       const vy = positions[i + 1];
-      const vz = positions[i + 2];
+      // Ignorar Z - projeção frontal pura
       
-      // Calcular distância para cada landmark e ordenar
-      const distances: { dist: number; idx: number }[] = [];
+      // Normalizar posição do vértice (0-1)
+      let u = (vx - bbox.min.x) / size.x;
+      let v = (vy - bbox.min.y) / size.y;
       
-      landmarkData.forEach((lm, idx) => {
-        const dx = vx - lm.pos3D.x;
-        const dy = vy - lm.pos3D.y;
-        const dz = (vz - lm.pos3D.z) * 0.3; // Reduzir peso da profundidade
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        distances.push({ dist, idx });
-      });
-      
-      // Ordenar por distância e pegar os N mais próximos
-      distances.sort((a, b) => a.dist - b.dist);
-      const nearest = distances.slice(0, NUM_NEAREST);
-      
-      // Verificar se há landmarks muito próximos (distância quase zero)
-      const minDist = nearest[0].dist;
-      
-      if (minDist < 0.001) {
-        // Vértice está exatamente sobre um landmark - usar UV diretamente
-        const lm = landmarkData[nearest[0].idx];
-        const uvIndex = (i / 3) * 2;
-        uvs[uvIndex] = lm.originalU;
-        uvs[uvIndex + 1] = lm.originalV;
-        continue;
-      }
-      
-      // Calcular pesos por distância inversa (IDW - Inverse Distance Weighting)
-      let totalWeight = 0;
-      let u = 0, v = 0;
-      
-      nearest.forEach(({ dist, idx }) => {
-        const lm = landmarkData[idx];
-        // Peso = 1/d^power * peso da região anatômica
-        const distWeight = 1 / Math.pow(dist + 0.01, FALLOFF_POWER);
-        const combinedWeight = distWeight * lm.weight;
-        
-        u += lm.originalU * combinedWeight;
-        v += lm.originalV * combinedWeight;
-        totalWeight += combinedWeight;
-      });
-      
-      // Normalizar
-      if (totalWeight > 0) {
-        u /= totalWeight;
-        v /= totalWeight;
+      // Mapear para o Face ROI na foto (se disponível)
+      if (faceROI) {
+        // U: mapeia horizontalmente para a largura do rosto na foto
+        u = faceROI.minX + u * faceROI.width;
+        // V: mapeia verticalmente (invertido para Three.js)
+        v = faceROI.maxY - v * faceROI.height;
       } else {
-        // Fallback: projeção planar simples
-        u = (vx - bbox.min.x) / size.x;
-        v = (vy - bbox.min.y) / size.y;
+        // Fallback: usar centro da imagem
+        v = 1 - v; // Inverter Y para Three.js
       }
       
-      // Aplicar pequeno ajuste para centralizar a face na textura
-      // (o modelo GLTF pode ter offset diferente da foto)
+      // Aplicar ajustes manuais de UV
+      u = (u - 0.5) * uvAdjustments.scaleX + 0.5 + uvAdjustments.offsetX;
+      v = (v - 0.5) * uvAdjustments.scaleY + 0.5 + uvAdjustments.offsetY;
+      
+      // Clampar valores
       const uvIndex = (i / 3) * 2;
       uvs[uvIndex] = Math.max(0, Math.min(1, u));
       uvs[uvIndex + 1] = Math.max(0, Math.min(1, v));
@@ -424,7 +630,7 @@ const DeformedGLTFMesh: React.FC<{
     geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     
     return geo;
-  }, [deformedGeometry, keyLandmarks, landmarkWeights]);
+  }, [deformedGeometry, faceROI, uvAdjustments]);
 
   if (!projectedGeometry) return null;
 
@@ -484,10 +690,23 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
   const [showParams, setShowParams] = useState(false);
   const [activePreset, setActivePreset] = useState<FacialPreset>('oval');
   const [meshDensity, setMeshDensity] = useState<MeshDensity>('balanceado');
+  const [adaptProportions, setAdaptProportions] = useState(true);
   
   const [deformParams, setDeformParams] = useState<DeformationParams>(
     FACIAL_PRESETS.oval.params
   );
+  
+  const [uvAdjustments, setUVAdjustments] = useState<UVAdjustments>({
+    scaleX: 1.0,
+    scaleY: 1.0,
+    offsetX: 0,
+    offsetY: 0,
+  });
+
+  // Calcular proporções do paciente para exibição
+  const patientProportions = useMemo(() => {
+    return calculatePatientProportions(landmarks);
+  }, [landmarks]);
 
   const handlePresetChange = (preset: FacialPreset) => {
     setActivePreset(preset);
@@ -499,6 +718,14 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
   const handleParamChange = (key: keyof DeformationParams, value: number) => {
     setActivePreset('custom');
     setDeformParams(p => ({ ...p, [key]: value }));
+  };
+
+  const handleUVChange = (key: keyof UVAdjustments, value: number) => {
+    setUVAdjustments(p => ({ ...p, [key]: value }));
+  };
+
+  const handleResetUV = () => {
+    setUVAdjustments({ scaleX: 1.0, scaleY: 1.0, offsetX: 0, offsetY: 0 });
   };
 
   const handleReset = () => {
@@ -588,14 +815,42 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
         </Button>
       </div>
 
-      {/* Deformation Parameters Panel */}
+      {/* Painel de Parâmetros */}
       <Collapsible open={showParams} onOpenChange={setShowParams}>
-        <CollapsibleContent className="absolute top-14 right-3 z-10 w-80 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg p-3 space-y-4 max-h-[70vh] overflow-y-auto">
+        <CollapsibleContent className="absolute top-14 right-3 z-10 w-80 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg p-3 space-y-4 max-h-[75vh] overflow-y-auto">
           <div className="text-xs font-semibold text-foreground border-b pb-2">
             Parâmetros de Deformação
           </div>
 
-          {/* Density Selector */}
+          {/* Adaptação Anatômica Toggle */}
+          <div className="flex items-center justify-between p-2 bg-primary/10 rounded-lg">
+            <div className="space-y-0.5">
+              <Label className="text-xs font-medium">Adaptar Proporções</Label>
+              <p className="text-[10px] text-muted-foreground">
+                Ajusta modelo às medidas do paciente
+              </p>
+            </div>
+            <Switch
+              checked={adaptProportions}
+              onCheckedChange={setAdaptProportions}
+            />
+          </div>
+
+          {/* Medidas do Paciente (se adaptação ativa) */}
+          {adaptProportions && patientProportions && (
+            <div className="p-2 bg-muted/50 rounded text-[10px] space-y-1">
+              <div className="font-medium text-xs mb-1">Medidas Detectadas:</div>
+              <div className="grid grid-cols-2 gap-1">
+                <span>Dist. Olhos: {(patientProportions.eyeDistance * 100).toFixed(1)}%</span>
+                <span>Largura Rosto: {(patientProportions.faceWidth * 100).toFixed(1)}%</span>
+                <span>Altura Rosto: {(patientProportions.faceHeight * 100).toFixed(1)}%</span>
+                <span>Largura Nariz: {(patientProportions.noseWidth * 100).toFixed(1)}%</span>
+                <span>Largura Boca: {(patientProportions.mouthWidth * 100).toFixed(1)}%</span>
+              </div>
+            </div>
+          )}
+
+          {/* Densidade do Mesh */}
           <div className="space-y-2">
             <Label className="text-xs font-medium">Densidade do Mesh</Label>
             <ToggleGroup 
@@ -622,7 +877,7 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
             </p>
           </div>
 
-          {/* Preset Selector */}
+          {/* Tipo Facial Preset */}
           <div className="space-y-2">
             <Label className="text-xs font-medium">Tipo Facial</Label>
             <ToggleGroup 
@@ -631,19 +886,19 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               onValueChange={(v) => v && handlePresetChange(v as FacialPreset)}
               className="grid grid-cols-4 gap-1"
             >
-              <ToggleGroupItem value="oval" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]" title="Rosto oval/equilibrado">
+              <ToggleGroupItem value="oval" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]">
                 <User className="h-3.5 w-3.5" />
                 <span>Oval</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="quadrado" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]" title="Maxilar pronunciado">
+              <ToggleGroupItem value="quadrado" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]">
                 <Square className="h-3.5 w-3.5" />
                 <span>Quadrado</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="alongado" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]" title="Rosto alongado">
+              <ToggleGroupItem value="alongado" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]">
                 <MoveVertical className="h-3.5 w-3.5" />
                 <span>Alongado</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="custom" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]" title="Configuração personalizada">
+              <ToggleGroupItem value="custom" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]">
                 <Settings2 className="h-3.5 w-3.5" />
                 <span>Custom</span>
               </ToggleGroupItem>
@@ -655,6 +910,7 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
             )}
           </div>
           
+          {/* Sliders de Deformação */}
           <div className="space-y-3 pt-2 border-t">
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
@@ -664,12 +920,9 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               <Slider
                 value={[deformParams.intensity * 100]}
                 onValueChange={([v]) => handleParamChange('intensity', v / 100)}
-                min={0}
-                max={100}
-                step={5}
+                min={0} max={100} step={5}
                 className="h-2"
               />
-              <p className="text-[10px] text-muted-foreground">Força da deformação aplicada aos vértices</p>
             </div>
             
             <div className="space-y-1.5">
@@ -680,12 +933,9 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               <Slider
                 value={[deformParams.influenceRadius * 100]}
                 onValueChange={([v]) => handleParamChange('influenceRadius', v / 100)}
-                min={0}
-                max={100}
-                step={5}
+                min={0} max={100} step={5}
                 className="h-2"
               />
-              <p className="text-[10px] text-muted-foreground">Área afetada por cada landmark</p>
             </div>
             
             <div className="space-y-1.5">
@@ -696,12 +946,77 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               <Slider
                 value={[deformParams.depthScale * 100]}
                 onValueChange={([v]) => handleParamChange('depthScale', v / 100)}
-                min={0}
-                max={100}
-                step={5}
+                min={0} max={100} step={5}
                 className="h-2"
               />
-              <p className="text-[10px] text-muted-foreground">Intensidade da deformação no eixo Z</p>
+            </div>
+          </div>
+          
+          {/* Ajustes de UV */}
+          <div className="space-y-3 pt-2 border-t">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium flex items-center gap-1">
+                <Move className="h-3 w-3" /> Ajuste de Textura (UV)
+              </Label>
+              <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={handleResetUV}>
+                Reset
+              </Button>
+            </div>
+            
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs flex items-center gap-1">
+                  <ArrowLeftRight className="h-3 w-3" /> Escala X
+                </Label>
+                <span className="text-xs text-muted-foreground">{uvAdjustments.scaleX.toFixed(2)}</span>
+              </div>
+              <Slider
+                value={[uvAdjustments.scaleX * 100]}
+                onValueChange={([v]) => handleUVChange('scaleX', v / 100)}
+                min={50} max={200} step={5}
+                className="h-2"
+              />
+            </div>
+            
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs flex items-center gap-1">
+                  <ArrowUpDown className="h-3 w-3" /> Escala Y
+                </Label>
+                <span className="text-xs text-muted-foreground">{uvAdjustments.scaleY.toFixed(2)}</span>
+              </div>
+              <Slider
+                value={[uvAdjustments.scaleY * 100]}
+                onValueChange={([v]) => handleUVChange('scaleY', v / 100)}
+                min={50} max={200} step={5}
+                className="h-2"
+              />
+            </div>
+            
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs">Offset X</Label>
+                <span className="text-xs text-muted-foreground">{uvAdjustments.offsetX.toFixed(2)}</span>
+              </div>
+              <Slider
+                value={[(uvAdjustments.offsetX + 0.5) * 100]}
+                onValueChange={([v]) => handleUVChange('offsetX', v / 100 - 0.5)}
+                min={0} max={100} step={2}
+                className="h-2"
+              />
+            </div>
+            
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs">Offset Y</Label>
+                <span className="text-xs text-muted-foreground">{uvAdjustments.offsetY.toFixed(2)}</span>
+              </div>
+              <Slider
+                value={[(uvAdjustments.offsetY + 0.5) * 100]}
+                onValueChange={([v]) => handleUVChange('offsetY', v / 100 - 0.5)}
+                min={0} max={100} step={2}
+                className="h-2"
+              />
             </div>
           </div>
           
@@ -709,31 +1024,35 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
             variant="outline"
             size="sm"
             className="w-full text-xs"
-            onClick={() => handlePresetChange('oval')}
+            onClick={() => {
+              handlePresetChange('oval');
+              handleResetUV();
+            }}
           >
-            Restaurar Padrões (Oval)
+            Restaurar Todos os Padrões
           </Button>
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Mode indicator */}
+      {/* Indicadores */}
       {hasData && (
         <div className="absolute top-3 left-3 z-10 text-xs bg-background/80 backdrop-blur-sm px-2 py-1 rounded font-medium">
           {showWireframe ? 'Wireframe GLTF' : 'Modelo Híbrido 3D'}
         </div>
       )}
 
-      {/* Info badges */}
       <div className="absolute top-12 left-3 z-10 flex flex-col gap-1">
         <div className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded">
           {DENSITY_INFO[meshDensity].points} landmarks ativos
         </div>
-        <div className="text-[10px] bg-muted px-2 py-0.5 rounded text-muted-foreground">
-          Pesos por região anatômica
-        </div>
+        {adaptProportions && (
+          <div className="text-[10px] bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-0.5 rounded">
+            Proporções adaptadas
+          </div>
+        )}
       </div>
 
-      {/* Instructions */}
+      {/* Instruções */}
       <div className="absolute bottom-3 left-3 z-10 text-xs text-muted-foreground bg-background/60 backdrop-blur-sm px-2 py-1 rounded">
         Arraste para rotacionar • Scroll para zoom
       </div>
@@ -757,6 +1076,8 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               opacity={opacity}
               deformParams={deformParams}
               density={meshDensity}
+              adaptProportions={adaptProportions}
+              uvAdjustments={uvAdjustments}
             />
             
             {showOverlay && !showWireframe && (
@@ -767,6 +1088,8 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
                 opacity={0.3}
                 deformParams={deformParams}
                 density={meshDensity}
+                adaptProportions={adaptProportions}
+                uvAdjustments={uvAdjustments}
               />
             )}
           </React.Suspense>
