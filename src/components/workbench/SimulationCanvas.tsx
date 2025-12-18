@@ -255,6 +255,11 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         preserveObjectStacking: true,
       });
       
+      // Initialize freeDrawingBrush for suture/incision tools
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      canvas.freeDrawingBrush.color = '#8b5cf6';
+      canvas.freeDrawingBrush.width = 2;
+      
       fabricRef.current = canvas;
       setIsReady(true);
 
