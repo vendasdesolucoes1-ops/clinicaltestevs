@@ -1,4 +1,4 @@
-// Tool Panel - Right side panel with tools and simulation controls - v2
+// Tool Panel - Right side panel with tools and simulation controls - v3
 import { useState, useCallback } from 'react';
 import {
   Move,
@@ -23,6 +23,8 @@ import {
   Activity,
   Ruler,
   Triangle,
+  Brain,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -105,6 +107,10 @@ interface ToolPanelProps {
   onGetCanvasImage?: () => string | null;
   caseName?: string;
   currentPhotoAngle?: string;
+  
+  // AI Mesh recommendation
+  onTriggerMeshAI?: () => void;
+  isMeshAILoading?: boolean;
 }
 
 const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
@@ -178,6 +184,8 @@ export function ToolPanel({
   onGetCanvasImage,
   caseName,
   currentPhotoAngle,
+  onTriggerMeshAI,
+  isMeshAILoading,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
   
@@ -390,6 +398,35 @@ export function ToolPanel({
                     </Button>
                   </div>
                 </div>
+
+                {/* Auto-Mesh AI Button */}
+                {onTriggerMeshAI && (
+                  <div className="pt-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full h-8 gap-1.5 border-primary/30 hover:border-primary hover:bg-primary/5"
+                          onClick={onTriggerMeshAI}
+                          disabled={isMeshAILoading || isAnalyzingFace}
+                        >
+                          {isMeshAILoading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Brain className="h-3.5 w-3.5 text-primary" />
+                          )}
+                          <span className="text-xs">Auto-Mesh IA</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="max-w-[200px]">
+                        <p className="text-xs">
+                          Usa GPT-4 Vision para analisar a imagem e recomendar a densidade ideal de mesh.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
 
                 {/* Edit Mode */}
                 <div className="space-y-2">
