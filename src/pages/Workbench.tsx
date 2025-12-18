@@ -13,6 +13,8 @@ import { SimulationCanvas, SimulationCanvasRef } from '@/components/workbench/Si
 import { Viewer3D } from '@/components/workbench/Viewer3D';
 import FaceMesh3D from '@/components/workbench/FaceMesh3D';
 import HybridFaceMesh3D from '@/components/workbench/HybridFaceMesh3D';
+import { PatientModelViewer } from '@/components/workbench/PatientModelViewer';
+import { Model3DUpload } from '@/components/workbench/Model3DUpload';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
 import { CollapsiblePanel } from '@/components/workbench/CollapsiblePanel';
@@ -25,6 +27,7 @@ import { useN8nFacialAnalysis } from '@/hooks/useN8nFacialAnalysis';
 import { useMediaPipeMesh } from '@/hooks/useMediaPipeMesh';
 import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
 import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
+import { useCase3DScans } from '@/hooks/useCase3DScans';
 import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
@@ -49,6 +52,17 @@ export default function Workbench() {
   const [showMesh, setShowMesh] = useState(true);
   const [meshOpacity, setMeshOpacity] = useState(80);
   const [analyzedPhotoIds, setAnalyzedPhotoIds] = useState<Set<string>>(new Set());
+  
+  // 3D Scans from Polycam/iPhone
+  const {
+    scans: case3DScans,
+    activeScan: active3DScan,
+    setActiveScan: setActive3DScan,
+    isUploading: is3DUploading,
+    uploadProgress: upload3DProgress,
+    uploadScan: upload3DScan,
+    deleteScan: delete3DScan,
+  } = useCase3DScans(id);
   
   const { 
     objects,
@@ -789,7 +803,11 @@ export default function Workbench() {
           )}
           
           {viewMode === '3d' && (
-            mesh3DData.landmarks.length > 0 ? (
+            active3DScan ? (
+              <PatientModelViewer
+                modelUrl={active3DScan.file_url}
+              />
+            ) : mesh3DData.landmarks.length > 0 ? (
               <HybridFaceMesh3D
                 landmarks={mesh3DData.landmarks}
                 imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}

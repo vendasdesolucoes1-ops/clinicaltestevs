@@ -62,6 +62,66 @@ export type Database = {
           },
         ]
       }
+      case_3d_scans: {
+        Row: {
+          case_id: string
+          created_at: string
+          file_name: string
+          file_size: number | null
+          file_url: string
+          id: string
+          notes: string | null
+          scan_source: string | null
+          scan_type: string | null
+          storage_path: string | null
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          file_name: string
+          file_size?: number | null
+          file_url: string
+          id?: string
+          notes?: string | null
+          scan_source?: string | null
+          scan_type?: string | null
+          storage_path?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          file_name?: string
+          file_size?: number | null
+          file_url?: string
+          id?: string
+          notes?: string | null
+          scan_source?: string | null
+          scan_type?: string | null
+          storage_path?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_3d_scans_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "case_3d_scans_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       case_exports: {
         Row: {
           case_id: string
