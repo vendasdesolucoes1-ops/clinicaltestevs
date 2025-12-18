@@ -133,7 +133,9 @@ export function filterLandmarksByPreset<T extends { id?: number; index?: number 
  */
 export function isLandmarkVisible(index: number, preset: MeshDensity): boolean {
   if (preset === 'completo') return true;
-  return PRESET_POINT_INDICES[preset].includes(index);
+  const indices = PRESET_POINT_INDICES[preset];
+  if (!indices) return true; // Fallback for unknown presets - show all points
+  return indices.includes(index);
 }
 
 /**
