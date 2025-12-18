@@ -518,6 +518,76 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             canvas.renderAll();
             toast.success('Objeto removido');
           } else {
+            // Check if clicking near any SVG measurement line
+            const clickThreshold = 15; // pixels tolerance
+            
+            // Helper function to calculate distance from point to line segment
+            const pointToLineDistance = (p: Point, lineStart: Point, lineEnd: Point): number => {
+              const A = p.x - lineStart.x;
+              const B = p.y - lineStart.y;
+              const C = lineEnd.x - lineStart.x;
+              const D = lineEnd.y - lineStart.y;
+              
+              const dot = A * C + B * D;
+              const lenSq = C * C + D * D;
+              let param = -1;
+              if (lenSq !== 0) param = dot / lenSq;
+              
+              let xx, yy;
+              if (param < 0) {
+                xx = lineStart.x;
+                yy = lineStart.y;
+              } else if (param > 1) {
+                xx = lineEnd.x;
+                yy = lineEnd.y;
+              } else {
+                xx = lineStart.x + param * C;
+                yy = lineStart.y + param * D;
+              }
+              
+              const dx = p.x - xx;
+              const dy = p.y - yy;
+              return Math.sqrt(dx * dx + dy * dy);
+            };
+            
+            // Check general measurements
+            const measurementToRemove = measurements.find(m => {
+              const distToLine = pointToLineDistance(pointer, m.start, m.end);
+              return distToLine < clickThreshold;
+            });
+            
+            if (measurementToRemove) {
+              setMeasurements(prev => prev.filter(m => m.id !== measurementToRemove.id));
+              toast.success('Medida removida');
+              return;
+            }
+            
+            // Check mesh measurements
+            const meshMeasurementToRemove = meshMeasurements.find(m => {
+              const distToLine = pointToLineDistance(pointer, m.point1, m.point2);
+              return distToLine < clickThreshold;
+            });
+            
+            if (meshMeasurementToRemove) {
+              setMeshMeasurements(prev => prev.filter(m => m.id !== meshMeasurementToRemove.id));
+              toast.success('Medida removida');
+              return;
+            }
+            
+            // Check angle measurements
+            const angleMeasurementToRemove = angleMeasurements.find(m => {
+              // Check distance to any of the two lines forming the angle
+              const dist1 = pointToLineDistance(pointer, m.point1, m.point2);
+              const dist2 = pointToLineDistance(pointer, m.point2, m.point3);
+              return Math.min(dist1, dist2) < clickThreshold;
+            });
+            
+            if (angleMeasurementToRemove) {
+              setAngleMeasurements(prev => prev.filter(m => m.id !== angleMeasurementToRemove.id));
+              toast.success('Medida de ângulo removida');
+              return;
+            }
+            
             toast.info('Clique sobre uma marcação para apagar');
           }
         } else if (activeTool === 'volume') {
