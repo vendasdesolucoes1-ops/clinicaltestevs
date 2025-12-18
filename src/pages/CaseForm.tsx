@@ -549,13 +549,54 @@ export default function CaseForm() {
                 >
                   <input
                     type="file"
-                    accept=".glb,.gltf"
-                    onChange={(e) => {
+                    accept=".glb,.gltf,.zip"
+                    onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (file) {
                         const ext = file.name.split('.').pop()?.toLowerCase();
+                        
+                        // Handle ZIP files
+                        if (ext === 'zip') {
+                          if (file.size > 200 * 1024 * 1024) {
+                            toast.error('Arquivo ZIP muito grande. Máximo: 200MB');
+                            return;
+                          }
+                          toast.info('Extraindo modelo do ZIP...');
+                          try {
+                            const JSZip = (await import('jszip')).default;
+                            const zip = await JSZip.loadAsync(file);
+                            const modelExtensions = ['.glb', '.gltf'];
+                            let modelFile: File | null = null;
+                            
+                            for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+                              if (zipEntry.dir) continue;
+                              const fileExt = relativePath.toLowerCase().slice(relativePath.lastIndexOf('.'));
+                              if (modelExtensions.includes(fileExt)) {
+                                const blob = await zipEntry.async('blob');
+                                const extractedName = relativePath.split('/').pop() || relativePath;
+                                modelFile = new File([blob], extractedName, {
+                                  type: extractedName.endsWith('.glb') ? 'model/gltf-binary' : 'model/gltf+json'
+                                });
+                                break;
+                              }
+                            }
+                            
+                            if (modelFile) {
+                              toast.success(`Extraído: ${modelFile.name}`);
+                              setModel3DFile(modelFile);
+                            } else {
+                              toast.error('ZIP não contém arquivo GLB ou GLTF');
+                            }
+                          } catch (err) {
+                            console.error('Error extracting ZIP:', err);
+                            toast.error('Erro ao extrair arquivo ZIP');
+                          }
+                          return;
+                        }
+                        
+                        // Regular GLB/GLTF files
                         if (ext !== 'glb' && ext !== 'gltf') {
-                          toast.error('Formato inválido. Use arquivos .glb ou .gltf');
+                          toast.error('Formato inválido. Use arquivos .glb, .gltf ou .zip');
                           return;
                         }
                         if (file.size > 100 * 1024 * 1024) {
@@ -570,12 +611,12 @@ export default function CaseForm() {
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Box className="h-8 w-8" />
                     <span className="text-sm font-medium">Arraste ou clique para enviar</span>
-                    <span className="text-xs">Formatos: GLB, GLTF (até 100MB)</span>
+                    <span className="text-xs">Formatos: GLB, GLTF ou ZIP (até 100MB)</span>
                   </div>
                 </label>
               )}
               <p className="text-xs text-muted-foreground">
-                Exporte seu scan do Polycam em formato GLTF para melhor qualidade de visualização 3D.
+                Exporte seu scan do Polycam em formato GLB ou GLTF. Você também pode enviar o ZIP exportado diretamente.
               </p>
             </div>
           </CardContent>
