@@ -56,6 +56,10 @@ const TOOL_INSTRUCTIONS: Record<ToolType | 'pan', { action: string; hint: string
     action: 'Anotar', 
     hint: 'Clique para adicionar texto • Arraste para posicionar' 
   },
+  measure: { 
+    action: 'Medir', 
+    hint: 'Clique no ponto inicial • Clique no ponto final para medir a distância' 
+  },
   eraser: { 
     action: 'Borracha', 
     hint: 'Clique em um elemento para removê-lo' 

@@ -24,6 +24,7 @@ const TOOL_LABELS: Record<ToolType, string> = {
   suture: 'Sutura',
   annotate: 'Anotar',
   eraser: 'Borracha',
+  measure: 'Medir',
 };
 
 export function CanvasStatusBar({
