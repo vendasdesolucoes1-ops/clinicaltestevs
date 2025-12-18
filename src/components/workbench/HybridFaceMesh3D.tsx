@@ -26,6 +26,7 @@ interface UVAdjustments {
   scaleY: number;
   offsetX: number;
   offsetY: number;
+  flipVertical: boolean;
 }
 
 interface AnatomicalProportions {
@@ -610,11 +611,18 @@ const DeformedGLTFMesh: React.FC<{
       if (faceROI) {
         // U: mapeia horizontalmente para a largura do rosto na foto
         u = faceROI.minX + u * faceROI.width;
-        // V: mapeia verticalmente (invertido para Three.js)
-        v = faceROI.maxY - v * faceROI.height;
+        // V: mapeia verticalmente com flip correto
+        // Quando flipVertical=true: parte superior do modelo → parte superior da foto
+        if (uvAdjustments.flipVertical) {
+          v = faceROI.minY + (1 - v) * faceROI.height;
+        } else {
+          v = faceROI.minY + v * faceROI.height;
+        }
       } else {
         // Fallback: usar centro da imagem
-        v = 1 - v; // Inverter Y para Three.js
+        if (uvAdjustments.flipVertical) {
+          v = 1 - v; // Inverter Y para Three.js
+        }
       }
       
       // Aplicar ajustes manuais de UV
@@ -701,6 +709,7 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
     scaleY: 1.0,
     offsetX: 0,
     offsetY: 0,
+    flipVertical: true, // Por padrão, flip ativo para corrigir orientação
   });
 
   // Calcular proporções do paciente para exibição
@@ -725,7 +734,7 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
   };
 
   const handleResetUV = () => {
-    setUVAdjustments({ scaleX: 1.0, scaleY: 1.0, offsetX: 0, offsetY: 0 });
+    setUVAdjustments({ scaleX: 1.0, scaleY: 1.0, offsetX: 0, offsetY: 0, flipVertical: true });
   };
 
   const handleReset = () => {
@@ -961,6 +970,22 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={handleResetUV}>
                 Reset
               </Button>
+            </div>
+            
+            {/* Toggle Flip Vertical */}
+            <div className="flex items-center justify-between p-2 bg-muted/50 rounded">
+              <div className="space-y-0.5">
+                <Label className="text-xs font-medium flex items-center gap-1">
+                  <ArrowUpDown className="h-3 w-3" /> Inverter Vertical
+                </Label>
+                <p className="text-[10px] text-muted-foreground">
+                  Corrige orientação da textura
+                </p>
+              </div>
+              <Switch
+                checked={uvAdjustments.flipVertical}
+                onCheckedChange={(checked) => setUVAdjustments(p => ({ ...p, flipVertical: checked }))}
+              />
             </div>
             
             <div className="space-y-1.5">
