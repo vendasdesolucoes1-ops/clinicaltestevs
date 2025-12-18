@@ -16,7 +16,7 @@ import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-import { type MeshVisualStyle } from './MediaPipeMeshRenderer';
+import { type MeshVisualStyle, type MeshMeasurement } from './MediaPipeMeshRenderer';
 
 interface SimulationCanvasProps {
   imageUrl: string;
@@ -150,16 +150,16 @@ const createWarpArrow = (
   endY: number
 ): fabric.Group => {
   const angle = Math.atan2(endY - startY, endX - startX);
-  const arrowSize = 10;
+  const arrowSize = 6;
   
-  // Main line
+  // Main line - thinner for more delicate marking
   const line = new fabric.Line([startX, startY, endX, endY], {
     stroke: '#f59e0b',
-    strokeWidth: 3,
+    strokeWidth: 1.5,
     selectable: false,
   });
   
-  // Arrow head
+  // Arrow head - smaller for proportion
   const arrowHead = new fabric.Triangle({
     left: endX,
     top: endY,
@@ -196,9 +196,13 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     // For warp tool - track drag start/end
     const warpStartRef = useRef<Point | null>(null);
     
-    // For measure tool - track measurement points
+    // For measure tool - track measurement points (arbitrary canvas points)
     const [measureStart, setMeasureStart] = useState<Point | null>(null);
     const [measurements, setMeasurements] = useState<{ id: string; start: Point; end: Point }[]>([]);
+    
+    // For mesh landmark measurements
+    const [meshMeasureStart, setMeshMeasureStart] = useState<{ pointId: number; x: number; y: number } | null>(null);
+    const [meshMeasurements, setMeshMeasurements] = useState<MeshMeasurement[]>([]);
     
     const {
       zoom,
@@ -650,8 +654,44 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     useEffect(() => {
       if (activeTool !== 'measure') {
         setMeasureStart(null);
+        setMeshMeasureStart(null);
       }
     }, [activeTool]);
+
+    // Handler for mesh point clicks in measure mode
+    const handleMeshPointClick = useCallback((pointId: number, canvasX: number, canvasY: number) => {
+      if (activeTool !== 'measure') return;
+      
+      if (!meshMeasureStart) {
+        // First point
+        setMeshMeasureStart({ pointId, x: canvasX, y: canvasY });
+        toast.info(`Ponto #${pointId} selecionado. Clique em outro ponto para medir.`);
+      } else {
+        // Second point - calculate and save measurement
+        const dx = canvasX - meshMeasureStart.x;
+        const dy = canvasY - meshMeasureStart.y;
+        const distancePx = Math.sqrt(dx * dx + dy * dy);
+        
+        const newMeasurement: MeshMeasurement = {
+          id: `mesh_measure_${Date.now()}`,
+          point1Id: meshMeasureStart.pointId,
+          point2Id: pointId,
+          point1: { x: meshMeasureStart.x, y: meshMeasureStart.y },
+          point2: { x: canvasX, y: canvasY },
+          distancePx,
+        };
+        
+        setMeshMeasurements(prev => [...prev, newMeasurement]);
+        setMeshMeasureStart(null);
+        
+        if (isCalibrated && pixelsPerMm) {
+          const mmDistance = distancePx / pixelsPerMm;
+          toast.success(`#${meshMeasureStart.pointId} → #${pointId}: ${mmDistance.toFixed(2)} mm`);
+        } else {
+          toast.success(`#${meshMeasureStart.pointId} → #${pointId}: ${distancePx.toFixed(1)} px`);
+        }
+      }
+    }, [activeTool, meshMeasureStart, isCalibrated, pixelsPerMm]);
 
     // Keyboard listener for measurements
     useEffect(() => {
@@ -661,18 +701,27 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             setMeasureStart(null);
             toast.info('Medição cancelada');
           }
+          if (meshMeasureStart) {
+            setMeshMeasureStart(null);
+            toast.info('Medição de landmark cancelada');
+          }
         }
         if (e.key === 'Delete' || e.key === 'Backspace') {
-          if (activeTool === 'measure' && measurements.length > 0) {
-            setMeasurements(prev => prev.slice(0, -1));
-            toast.info('Última medição removida');
+          if (activeTool === 'measure') {
+            if (meshMeasurements.length > 0) {
+              setMeshMeasurements(prev => prev.slice(0, -1));
+              toast.info('Última medição de landmark removida');
+            } else if (measurements.length > 0) {
+              setMeasurements(prev => prev.slice(0, -1));
+              toast.info('Última medição removida');
+            }
           }
         }
       };
       
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [measureStart, activeTool, measurements.length]);
+    }, [measureStart, meshMeasureStart, activeTool, measurements.length, meshMeasurements.length]);
 
     // Pan handling
     useEffect(() => {
@@ -1046,7 +1095,91 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           imageHeight={imageBounds.height}
           imageLeft={imageBounds.left}
           imageTop={imageBounds.top}
+          activeTool={activeTool}
+          onMeshPointClick={handleMeshPointClick}
         />
+
+        {/* Mesh Landmark Measurements Overlay */}
+        {(meshMeasurements.length > 0 || meshMeasureStart) && (
+          <svg
+            className="absolute inset-0 pointer-events-none z-30"
+            style={{ width: '100%', height: '100%' }}
+          >
+            {/* Completed mesh measurements */}
+            {meshMeasurements.map(m => {
+              const panX = fabricRef.current?.viewportTransform?.[4] || 0;
+              const panY = fabricRef.current?.viewportTransform?.[5] || 0;
+              const p1Screen = { x: m.point1.x * zoom + panX, y: m.point1.y * zoom + panY };
+              const p2Screen = { x: m.point2.x * zoom + panX, y: m.point2.y * zoom + panY };
+              const midX = (p1Screen.x + p2Screen.x) / 2;
+              const midY = (p1Screen.y + p2Screen.y) / 2;
+              
+              const displayDist = isCalibrated && pixelsPerMm 
+                ? `${(m.distancePx / pixelsPerMm).toFixed(2)} mm` 
+                : `${m.distancePx.toFixed(1)} px`;
+              
+              return (
+                <g key={m.id}>
+                  <line
+                    x1={p1Screen.x}
+                    y1={p1Screen.y}
+                    x2={p2Screen.x}
+                    y2={p2Screen.y}
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    strokeDasharray="4 2"
+                  />
+                  <circle cx={p1Screen.x} cy={p1Screen.y} r={6} fill="#22c55e" stroke="#fff" strokeWidth={1} />
+                  <circle cx={p2Screen.x} cy={p2Screen.y} r={6} fill="#22c55e" stroke="#fff" strokeWidth={1} />
+                  <text x={p1Screen.x} y={p1Screen.y - 8} textAnchor="middle" className="fill-foreground text-[10px] font-mono">
+                    #{m.point1Id}
+                  </text>
+                  <text x={p2Screen.x} y={p2Screen.y - 8} textAnchor="middle" className="fill-foreground text-[10px] font-mono">
+                    #{m.point2Id}
+                  </text>
+                  <rect
+                    x={midX - 35}
+                    y={midY - 12}
+                    width={70}
+                    height={20}
+                    rx={4}
+                    fill="hsl(var(--background))"
+                    stroke="#22c55e"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={midX}
+                    y={midY + 4}
+                    textAnchor="middle"
+                    className="fill-foreground text-xs font-mono font-medium"
+                  >
+                    {displayDist}
+                  </text>
+                </g>
+              );
+            })}
+            
+            {/* Active mesh measurement in progress */}
+            {meshMeasureStart && activeTool === 'measure' && (
+              <g>
+                {(() => {
+                  const panX = fabricRef.current?.viewportTransform?.[4] || 0;
+                  const panY = fabricRef.current?.viewportTransform?.[5] || 0;
+                  const startScreen = { x: meshMeasureStart.x * zoom + panX, y: meshMeasureStart.y * zoom + panY };
+                  
+                  return (
+                    <>
+                      <circle cx={startScreen.x} cy={startScreen.y} r={8} fill="#22c55e" stroke="#fff" strokeWidth={2} />
+                      <text x={startScreen.x} y={startScreen.y - 12} textAnchor="middle" className="fill-foreground text-[10px] font-mono font-bold">
+                        #{meshMeasureStart.pointId}
+                      </text>
+                    </>
+                  );
+                })()}
+              </g>
+            )}
+          </svg>
+        )}
 
         <CanvasToolbar
           zoom={zoom}

@@ -1,8 +1,18 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
 import { MediaPipeMeshData, MEDIAPIPE_SIMPLIFIED_CONNECTIONS, MEDIAPIPE_DENSE_CONNECTIONS } from '@/types/mediapipeMesh';
+import { ToolType } from './ToolPanel';
 
 export type MeshVisualStyle = 'minimal' | 'standard' | 'detailed';
+
+export interface MeshMeasurement {
+  id: string;
+  point1Id: number;
+  point2Id: number;
+  point1: { x: number; y: number };
+  point2: { x: number; y: number };
+  distancePx: number;
+}
 
 interface MediaPipeMeshRendererProps {
   canvas: fabric.Canvas | null;
@@ -15,13 +25,17 @@ interface MediaPipeMeshRendererProps {
   imageHeight: number;
   imageLeft: number;
   imageTop: number;
+  activeTool?: ToolType;
+  onMeshPointClick?: (pointId: number, canvasX: number, canvasY: number) => void;
 }
 
 // Estilos minimalistas - tons de azul clínico sutis
 const MESH_STYLES = {
   minimal: {
     pointRadius: 0.8,
+    pointRadiusMeasure: 3,
     pointColor: 'rgba(120, 180, 220, 0.6)',
+    pointColorMeasure: 'rgba(6, 182, 212, 0.9)',
     pointStroke: 'transparent',
     pointStrokeWidth: 0,
     lineWidth: 0.3,
@@ -30,7 +44,9 @@ const MESH_STYLES = {
   },
   standard: {
     pointRadius: 1.2,
+    pointRadiusMeasure: 4,
     pointColor: 'rgba(100, 170, 210, 0.7)',
+    pointColorMeasure: 'rgba(6, 182, 212, 0.9)',
     pointStroke: 'rgba(255, 255, 255, 0.2)',
     pointStrokeWidth: 0.5,
     lineWidth: 0.5,
@@ -39,7 +55,9 @@ const MESH_STYLES = {
   },
   detailed: {
     pointRadius: 1.6,
+    pointRadiusMeasure: 5,
     pointColor: 'rgba(80, 160, 200, 0.8)',
+    pointColorMeasure: 'rgba(6, 182, 212, 0.9)',
     pointStroke: 'rgba(255, 255, 255, 0.35)',
     pointStrokeWidth: 0.8,
     lineWidth: 0.7,
@@ -59,11 +77,14 @@ export const MediaPipeMeshRenderer = ({
   imageHeight,
   imageLeft,
   imageTop,
+  activeTool,
+  onMeshPointClick,
 }: MediaPipeMeshRendererProps) => {
   const meshObjectsRef = useRef<fabric.Object[]>([]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; id: number } | null>(null);
 
   const style = MESH_STYLES[visualStyle];
+  const isMeasureMode = activeTool === 'measure';
 
   const clearMesh = useCallback(() => {
     if (!canvas) return;
@@ -126,39 +147,45 @@ export const MediaPipeMeshRenderer = ({
     });
 
     // Desenhar os pontos (por cima das linhas)
+    // Em modo measure, pontos são maiores e clicáveis
+    const pointRadius = isMeasureMode ? style.pointRadiusMeasure : style.pointRadius;
+    const pointColor = isMeasureMode ? style.pointColorMeasure : style.pointColor;
+    
     points.forEach(point => {
       const coords = pointsMap.get(point.id);
       if (!coords) return;
 
       const circle = new fabric.Circle({
-        radius: style.pointRadius,
-        fill: style.pointColor,
-        stroke: style.pointStroke,
-        strokeWidth: style.pointStrokeWidth,
-        left: coords.x - style.pointRadius,
-        top: coords.y - style.pointRadius,
+        radius: pointRadius,
+        fill: pointColor,
+        stroke: isMeasureMode ? '#06b6d4' : style.pointStroke,
+        strokeWidth: isMeasureMode ? 1 : style.pointStrokeWidth,
+        left: coords.x - pointRadius,
+        top: coords.y - pointRadius,
         selectable: false,
         hasControls: false,
         hasBorders: false,
         opacity: opacity / 100,
-        hoverCursor: 'default',
+        hoverCursor: isMeasureMode ? 'pointer' : 'default',
+        evented: isMeasureMode, // Enable events in measure mode
       });
 
       (circle as any).customName = `mediapipe_point_${point.id}`;
       (circle as any).pointId = point.id;
+      (circle as any).pointCoords = coords;
 
       canvas.add(circle);
       meshObjectsRef.current.push(circle);
     });
 
     canvas.renderAll();
-  }, [canvas, meshData, visible, opacity, density, visualStyle, style, imageWidth, imageHeight, imageLeft, imageTop, clearMesh]);
+  }, [canvas, meshData, visible, opacity, density, visualStyle, style, imageWidth, imageHeight, imageLeft, imageTop, clearMesh, isMeasureMode]);
 
   useEffect(() => {
     drawMesh();
   }, [drawMesh]);
 
-  // Tooltip on hover
+  // Tooltip on hover and click handler for measure mode
   useEffect(() => {
     if (!canvas) return;
 
@@ -181,14 +208,27 @@ export const MediaPipeMeshRenderer = ({
       }
     };
 
+    const handleMouseDown = (e: any) => {
+      const target = e.target;
+      if (isMeasureMode && target && typeof (target as any).pointId === 'number') {
+        const pointId = (target as any).pointId;
+        const coords = (target as any).pointCoords;
+        if (coords && onMeshPointClick) {
+          onMeshPointClick(pointId, coords.x, coords.y);
+        }
+      }
+    };
+
     canvas.on('mouse:over', handleMouseOver);
     canvas.on('mouse:out', handleMouseOut);
+    canvas.on('mouse:down', handleMouseDown);
 
     return () => {
       canvas.off('mouse:over', handleMouseOver);
       canvas.off('mouse:out', handleMouseOut);
+      canvas.off('mouse:down', handleMouseDown);
     };
-  }, [canvas]);
+  }, [canvas, isMeasureMode, onMeshPointClick]);
 
   // Cleanup on unmount
   useEffect(() => {
