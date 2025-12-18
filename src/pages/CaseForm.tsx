@@ -6,7 +6,9 @@ import {
   Check, 
   X, 
   Camera,
-  AlertCircle
+  AlertCircle,
+  Box,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,6 +81,9 @@ export default function CaseForm() {
     perfil_e: null,
     tres_quartos: null,
   });
+
+  // 3D Model state
+  const [model3DFile, setModel3DFile] = useState<File | null>(null);
 
   const [tagInput, setTagInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -284,8 +289,43 @@ export default function CaseForm() {
               angle: angle as PhotoAngle, 
               url: publicUrl 
             });
-          }
         }
+      }
+
+      // Upload 3D model if provided
+      if (model3DFile) {
+        try {
+          const fileExt = model3DFile.name.split('.').pop()?.toLowerCase();
+          const fileName = `${caseId}/model_${Date.now()}.${fileExt}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('case-3d-models')
+            .upload(fileName, model3DFile, { upsert: true });
+          
+          if (!uploadError) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('case-3d-models')
+              .getPublicUrl(fileName);
+            
+            await supabase.from('case_3d_scans').insert({
+              case_id: caseId,
+              file_name: model3DFile.name,
+              file_url: publicUrl,
+              file_size: model3DFile.size,
+              storage_path: fileName,
+              scan_source: 'polycam',
+              scan_type: 'face',
+              uploaded_by: userId,
+            });
+            
+            console.log('Modelo 3D enviado com sucesso');
+          } else {
+            console.error('Erro ao enviar modelo 3D:', uploadError);
+          }
+        } catch (modelError) {
+          console.error('Erro ao processar modelo 3D:', modelError);
+        }
+      }
       }
 
       // Always trigger n8n webhook with case data (even without photos)
@@ -463,6 +503,80 @@ export default function CaseForm() {
                   de imagens e uso para planejamento cirúrgico.
                 </p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 3D Model Upload */}
+        <Card className="clinical-panel">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Box className="h-4 w-4" />
+              Modelo 3D (Polycam)
+            </CardTitle>
+            {model3DFile && (
+              <Check className="h-4 w-4 text-success" />
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {model3DFile ? (
+                <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <Box className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{model3DFile.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {(model3DFile.size / (1024 * 1024)).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setModel3DFile(null)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <label
+                  className="flex flex-col items-center justify-center h-32 rounded-lg border-2 border-dashed cursor-pointer transition-colors border-border hover:border-primary/50 hover:bg-primary/5"
+                >
+                  <input
+                    type="file"
+                    accept=".glb,.gltf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const ext = file.name.split('.').pop()?.toLowerCase();
+                        if (ext !== 'glb' && ext !== 'gltf') {
+                          toast.error('Formato inválido. Use arquivos .glb ou .gltf');
+                          return;
+                        }
+                        if (file.size > 100 * 1024 * 1024) {
+                          toast.error('Arquivo muito grande. Máximo: 100MB');
+                          return;
+                        }
+                        setModel3DFile(file);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <Box className="h-8 w-8" />
+                    <span className="text-sm font-medium">Arraste ou clique para enviar</span>
+                    <span className="text-xs">Formatos: GLB, GLTF (até 100MB)</span>
+                  </div>
+                </label>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Exporte seu scan do Polycam em formato GLTF para melhor qualidade de visualização 3D.
+              </p>
             </div>
           </CardContent>
         </Card>
