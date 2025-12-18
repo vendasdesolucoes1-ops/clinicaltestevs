@@ -821,7 +821,7 @@ export default function Workbench() {
                 mediaPipeMeshData={mediaPipeMeshData}
                 showMesh={showMesh && (mediaPipeMeshVisible || !mediaPipeMeshData)}
                 meshOpacity={mediaPipeMeshData ? mediaPipeMeshOpacity : meshOpacity}
-                meshDensity={mediaPipeMeshDensity}
+                meshDensity={meshDensity}
                 meshVisualStyle={mediaPipeMeshVisualStyle}
                 meshEditMode={meshEditMode}
                 connectingFrom={connectingFrom}
