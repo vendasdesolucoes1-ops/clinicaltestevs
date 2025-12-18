@@ -309,9 +309,62 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         canvas.sendObjectToBack(placeholder);
         canvas.renderAll();
       });
-    }, [imageUrl, isReady, layerOpacity.original]);
+    }, [imageUrl, isReady]);
 
-    // Configure drawing mode based on active tool
+    // Apply layer visibility and opacity to canvas objects
+    useEffect(() => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      const objects = canvas.getObjects();
+      
+      objects.forEach((obj: any) => {
+        // Background image - handle original layer
+        if (obj.customName === 'backgroundImage') {
+          obj.set({
+            visible: layers.original,
+            opacity: layerOpacity.original / 100,
+          });
+          return;
+        }
+
+        // Grid objects - always visible
+        if (obj.customName?.startsWith('grid_')) return;
+
+        // Mesh objects - handled separately
+        if (obj.customName?.startsWith('mesh_') || obj.customName?.startsWith('mediapipe_')) return;
+
+        // Determine object layer based on toolType or customName
+        const toolType = obj.toolType;
+        let objectLayer: 'markings' | 'simulation' | null = null;
+
+        // Markings: incisions, sutures, annotations
+        if (toolType === 'incision' || toolType === 'suture' || toolType === 'annotate') {
+          objectLayer = 'markings';
+        }
+        // Simulation: volume, warp
+        else if (toolType === 'volume' || toolType === 'warp') {
+          objectLayer = 'simulation';
+        }
+        // Fallback: check customName patterns
+        else if (obj.customName?.includes('incision') || obj.customName?.includes('suture') || obj.customName?.includes('annotation')) {
+          objectLayer = 'markings';
+        }
+        else if (obj.customName?.includes('volume') || obj.customName?.includes('warp')) {
+          objectLayer = 'simulation';
+        }
+
+        if (objectLayer) {
+          obj.set({
+            visible: layers[objectLayer],
+            opacity: (layers[objectLayer] ? layerOpacity[objectLayer] / 100 : 0),
+          });
+        }
+      });
+
+      canvas.renderAll();
+    }, [layers, layerOpacity]);
+
     useEffect(() => {
       const canvas = fabricRef.current;
       if (!canvas) return;
