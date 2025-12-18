@@ -57,6 +57,7 @@ const TOOL_COLORS: Record<ToolType, string> = {
   suture: '#8b5cf6',
   annotate: '#0ea5e9',
   eraser: '#64748b',
+  measure: '#06b6d4',
 };
 
 const TOOL_CURSORS: Record<ToolType, string> = {
@@ -67,6 +68,7 @@ const TOOL_CURSORS: Record<ToolType, string> = {
   suture: 'crosshair',
   annotate: 'text',
   eraser: 'not-allowed',
+  measure: 'crosshair',
 };
 
 // Helper to create suture points along a path
@@ -193,6 +195,10 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     
     // For warp tool - track drag start/end
     const warpStartRef = useRef<Point | null>(null);
+    
+    // For measure tool - track measurement points
+    const [measureStart, setMeasureStart] = useState<Point | null>(null);
+    const [measurements, setMeasurements] = useState<{ id: string; start: Point; end: Point }[]>([]);
     
     const {
       zoom,
@@ -556,6 +562,33 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             onObjectAdded?.(canvasObj);
             toast.success('Anotação adicionada');
           }
+        } else if (activeTool === 'measure') {
+          if (!measureStart) {
+            // First click - set start point
+            setMeasureStart({ x: pointer.x, y: pointer.y });
+            toast.info('Clique no segundo ponto para medir');
+          } else {
+            // Second click - complete measurement
+            const newMeasurement = {
+              id: `measure_${Date.now()}`,
+              start: measureStart,
+              end: { x: pointer.x, y: pointer.y },
+            };
+            setMeasurements(prev => [...prev, newMeasurement]);
+            setMeasureStart(null);
+            
+            // Calculate distance
+            const dx = pointer.x - measureStart.x;
+            const dy = pointer.y - measureStart.y;
+            const pixelDistance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (isCalibrated && pixelsPerMm) {
+              const mmDistance = pixelDistance / pixelsPerMm;
+              toast.success(`Distância: ${mmDistance.toFixed(2)} mm`);
+            } else {
+              toast.success(`Distância: ${pixelDistance.toFixed(1)} px (calibre para ver em mm)`);
+            }
+          }
         }
       };
 
@@ -611,7 +644,35 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         canvas.off('mouse:over', handleMouseOver);
         canvas.off('mouse:out', handleMouseOut);
       };
-    }, [activeTool, toolParams, addObject, onObjectAdded, isPanMode, isCalibrating, calibrationStep, setPoint1, setPoint2]);
+    }, [activeTool, toolParams, addObject, onObjectAdded, isPanMode, isCalibrating, calibrationStep, setPoint1, setPoint2, measureStart, isCalibrated, pixelsPerMm]);
+
+    // Clear measure start when switching away from measure tool
+    useEffect(() => {
+      if (activeTool !== 'measure') {
+        setMeasureStart(null);
+      }
+    }, [activeTool]);
+
+    // Keyboard listener for measurements
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          if (measureStart) {
+            setMeasureStart(null);
+            toast.info('Medição cancelada');
+          }
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (activeTool === 'measure' && measurements.length > 0) {
+            setMeasurements(prev => prev.slice(0, -1));
+            toast.info('Última medição removida');
+          }
+        }
+      };
+      
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [measureStart, activeTool, measurements.length]);
 
     // Pan handling
     useEffect(() => {
@@ -801,6 +862,133 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           pixelsPerMm={pixelsPerMm}
           onCalibrate={startCalibration}
         />
+
+        {/* Measurement Overlay */}
+        {(measureStart || measurements.length > 0) && (
+          <svg
+            className="absolute inset-0 z-25 pointer-events-none"
+            width={containerRef.current?.clientWidth || 0}
+            height={containerRef.current?.clientHeight || 0}
+          >
+            {/* Completed measurements */}
+            {measurements.map((m) => {
+              const panX = fabricRef.current?.viewportTransform?.[4] || 0;
+              const panY = fabricRef.current?.viewportTransform?.[5] || 0;
+              const startScreen = { x: m.start.x * zoom + panX, y: m.start.y * zoom + panY };
+              const endScreen = { x: m.end.x * zoom + panX, y: m.end.y * zoom + panY };
+              
+              const dx = m.end.x - m.start.x;
+              const dy = m.end.y - m.start.y;
+              const pixelDist = Math.sqrt(dx * dx + dy * dy);
+              const displayDist = isCalibrated && pixelsPerMm 
+                ? `${(pixelDist / pixelsPerMm).toFixed(2)} mm` 
+                : `${pixelDist.toFixed(1)} px`;
+              
+              const midX = (startScreen.x + endScreen.x) / 2;
+              const midY = (startScreen.y + endScreen.y) / 2;
+              
+              return (
+                <g key={m.id}>
+                  {/* Measurement line */}
+                  <line
+                    x1={startScreen.x}
+                    y1={startScreen.y}
+                    x2={endScreen.x}
+                    y2={endScreen.y}
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    strokeDasharray="6 3"
+                  />
+                  {/* End points */}
+                  <circle cx={startScreen.x} cy={startScreen.y} r={5} fill="#06b6d4" />
+                  <circle cx={endScreen.x} cy={endScreen.y} r={5} fill="#06b6d4" />
+                  {/* Distance label */}
+                  <rect
+                    x={midX - 30}
+                    y={midY - 12}
+                    width={60}
+                    height={20}
+                    rx={4}
+                    fill="hsl(var(--background))"
+                    stroke="#06b6d4"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={midX}
+                    y={midY + 4}
+                    textAnchor="middle"
+                    className="fill-foreground text-xs font-mono font-medium"
+                  >
+                    {displayDist}
+                  </text>
+                </g>
+              );
+            })}
+            
+            {/* Active measurement in progress */}
+            {measureStart && activeTool === 'measure' && (
+              <g>
+                {(() => {
+                  const panX = fabricRef.current?.viewportTransform?.[4] || 0;
+                  const panY = fabricRef.current?.viewportTransform?.[5] || 0;
+                  const startScreen = { x: measureStart.x * zoom + panX, y: measureStart.y * zoom + panY };
+                  const endScreen = { x: cursorPosition.x * zoom + panX, y: cursorPosition.y * zoom + panY };
+                  
+                  const dx = cursorPosition.x - measureStart.x;
+                  const dy = cursorPosition.y - measureStart.y;
+                  const pixelDist = Math.sqrt(dx * dx + dy * dy);
+                  const displayDist = isCalibrated && pixelsPerMm 
+                    ? `${(pixelDist / pixelsPerMm).toFixed(2)} mm` 
+                    : `${pixelDist.toFixed(1)} px`;
+                  
+                  const midX = (startScreen.x + endScreen.x) / 2;
+                  const midY = (startScreen.y + endScreen.y) / 2;
+                  
+                  return (
+                    <>
+                      {/* Preview line */}
+                      <line
+                        x1={startScreen.x}
+                        y1={startScreen.y}
+                        x2={endScreen.x}
+                        y2={endScreen.y}
+                        stroke="#06b6d4"
+                        strokeWidth={2}
+                        strokeDasharray="6 3"
+                        opacity={0.7}
+                      />
+                      {/* Start point */}
+                      <circle cx={startScreen.x} cy={startScreen.y} r={5} fill="#06b6d4" />
+                      {/* Preview distance */}
+                      {pixelDist > 20 && (
+                        <>
+                          <rect
+                            x={midX - 30}
+                            y={midY - 12}
+                            width={60}
+                            height={20}
+                            rx={4}
+                            fill="hsl(var(--background) / 0.9)"
+                            stroke="#06b6d4"
+                            strokeWidth={1}
+                          />
+                          <text
+                            x={midX}
+                            y={midY + 4}
+                            textAnchor="middle"
+                            className="fill-foreground text-xs font-mono font-medium"
+                          >
+                            {displayDist}
+                          </text>
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
+              </g>
+            )}
+          </svg>
+        )}
 
         {/* Calibration Overlay */}
         <CalibrationOverlay
