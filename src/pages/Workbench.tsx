@@ -806,6 +806,10 @@ export default function Workbench() {
             active3DScan ? (
               <PatientModelViewer
                 modelUrl={active3DScan.file_url}
+                // Pass MediaPipe landmarks if available for projection onto 3D scan
+                landmarks2D={mediaPipeMeshData?.points?.map(p => ({ x: p.x, y: p.y, z: p.z }))}
+                connections={mediaPipeMeshData?.connections}
+                landmarkVisualStyle={mediaPipeMeshVisualStyle}
               />
             ) : mesh3DData.landmarks.length > 0 ? (
               <HybridFaceMesh3D
