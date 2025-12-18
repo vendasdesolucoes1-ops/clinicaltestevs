@@ -53,7 +53,7 @@ import {
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { cn } from '@/lib/utils';
 
-import { type MeshDensity, type SymmetryResult } from '@/types/facialLandmarks';
+import { type MeshDensity, type SymmetryResult, MESH_PRESETS } from '@/types/facialLandmarks';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { type MeshVisualStyle } from './MediaPipeMeshRenderer';
 import { SymmetryIndicator } from './SymmetryIndicator';
@@ -374,28 +374,35 @@ export function ToolPanel({
                   </div>
                 </div>
 
-                {/* Density Toggle */}
+                {/* Density Preset Selector */}
                 <div className="space-y-2">
-                  <Label className="text-xs">Densidade</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={meshDensity === 'simple' ? 'tool-active' : 'outline'}
-                      size="sm"
-                      className="flex-1 h-7"
-                      onClick={() => onMeshDensityChange('simple')}
-                      disabled={!showMesh}
-                    >
-                      <span className="text-xs">Simples</span>
-                    </Button>
-                    <Button
-                      variant={meshDensity === 'dense' ? 'tool-active' : 'outline'}
-                      size="sm"
-                      className="flex-1 h-7"
-                      onClick={() => onMeshDensityChange('dense')}
-                      disabled={!showMesh}
-                    >
-                      <span className="text-xs">Denso</span>
-                    </Button>
+                  <Label className="text-xs">Densidade do Mesh</Label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(Object.keys(MESH_PRESETS) as MeshDensity[]).map((preset) => {
+                      const config = MESH_PRESETS[preset];
+                      const isActive = meshDensity === preset;
+                      return (
+                        <Button
+                          key={preset}
+                          variant={isActive ? 'tool-active' : 'outline'}
+                          size="sm"
+                          className={cn(
+                            "h-auto py-2 px-2 flex flex-col items-start gap-0.5",
+                            isActive && "ring-1 ring-primary"
+                          )}
+                          onClick={() => onMeshDensityChange(preset)}
+                          disabled={!showMesh}
+                        >
+                          <div className="flex items-center gap-1.5 w-full">
+                            <span className="text-sm">{config.icon}</span>
+                            <span className="text-xs font-medium">{config.label}</span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {config.points} pts
+                          </span>
+                        </Button>
+                      );
+                    })}
                   </div>
                 </div>
 

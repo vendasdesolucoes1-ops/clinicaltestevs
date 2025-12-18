@@ -10,7 +10,7 @@ import { FacialMesh } from './FacialMesh';
 import { MediaPipeMeshRenderer } from './MediaPipeMeshRenderer';
 import { useCanvasState, Point, CanvasObject } from '@/hooks/useCanvasState';
 import { useCalibration } from '@/hooks/useCalibration';
-import { FacialMeshData } from '@/types/facialLandmarks';
+import { FacialMeshData, MeshDensity } from '@/types/facialLandmarks';
 import { MediaPipeMeshData } from '@/types/mediapipeMesh';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { cn } from '@/lib/utils';
@@ -27,7 +27,7 @@ interface SimulationCanvasProps {
   mediaPipeMeshData?: MediaPipeMeshData | null;
   showMesh?: boolean;
   meshOpacity?: number;
-  meshDensity?: 'simple' | 'dense';
+  meshDensity?: MeshDensity;
   meshVisualStyle?: MeshVisualStyle;
   meshEditMode?: MeshEditMode;
   connectingFrom?: string | null;
@@ -185,7 +185,7 @@ const createWarpArrow = (
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'dense', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);

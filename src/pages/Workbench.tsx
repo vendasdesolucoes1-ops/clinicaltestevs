@@ -34,6 +34,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
 import { MEDIAPIPE_FACE_TESSELLATION } from '@/types/mediapipeTessellation';
+import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
 import type { Landmark3D, TriangleFace } from '@/types/faceMesh3D';
 
 type ViewMode = '2d' | '3d' | 'compare';
@@ -483,11 +484,12 @@ export default function Workbench() {
     });
   }, [currentImageUrl, caseData, getMeshRecommendation]);
 
-  const handleApplyMeshRecommendation = useCallback((density2D: 'simple' | 'dense', density3D: 'rapido' | 'balanceado' | 'maximo') => {
-    setMeshDensity(density2D);
-    setMediaPipeMeshDensity(density2D);
+  const handleApplyMeshRecommendation = useCallback((density: MeshDensity) => {
+    setMeshDensity(density);
+    setMediaPipeMeshDensity(density);
+    const presetConfig = MESH_PRESETS[density];
     toast.success('Recomendação aplicada', {
-      description: `Mesh 2D: ${density2D === 'simple' ? 'Simples' : 'Denso'}`,
+      description: `${presetConfig.icon} ${presetConfig.label} (${presetConfig.points} pts)`,
     });
     clearMeshRecommendation();
   }, [setMeshDensity, setMediaPipeMeshDensity, clearMeshRecommendation]);

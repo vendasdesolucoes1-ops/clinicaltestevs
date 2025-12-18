@@ -48,7 +48,7 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
   const [faceROI, setFaceROI] = useState<FaceROI | null>(null);
   const [midlinePoints, setMidlinePoints] = useState<string[]>([]);
   const [customConnections, setCustomConnections] = useState<FacialConnection[]>([]);
-  const [meshDensity, setMeshDensity] = useState<MeshDensity>('dense');
+  const [meshDensity, setMeshDensity] = useState<MeshDensity>('clinico');
   const [meshEditMode, setMeshEditMode] = useState<MeshEditMode>('move');
   const [customPointCounter, setCustomPointCounter] = useState(1);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);

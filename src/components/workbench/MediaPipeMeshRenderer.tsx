@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
 import { MediaPipeMeshData, MEDIAPIPE_SIMPLIFIED_CONNECTIONS, MEDIAPIPE_DENSE_CONNECTIONS } from '@/types/mediapipeMesh';
+import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
 import { ToolType } from './ToolPanel';
 
 export type MeshVisualStyle = 'minimal' | 'standard' | 'detailed';
@@ -30,7 +31,7 @@ interface MediaPipeMeshRendererProps {
   meshData: MediaPipeMeshData | null;
   visible: boolean;
   opacity: number;
-  density: 'simple' | 'dense';
+  density: MeshDensity;
   visualStyle: MeshVisualStyle;
   imageWidth: number;
   imageHeight: number;
@@ -130,12 +131,13 @@ export const MediaPipeMeshRenderer = ({
       pointsMap.set(point.id, { x: canvasX, y: canvasY });
     });
 
-    // Determinar quais conexões usar
+    // Determinar quais conexões usar (use dense for clinico, avancado, completo)
+    const useDenseConnections = density !== 'simetria';
     const connectionsToUse = meshData.connections && meshData.connections.length > 0
       ? meshData.connections
-      : (density === 'dense' ? MEDIAPIPE_DENSE_CONNECTIONS : MEDIAPIPE_SIMPLIFIED_CONNECTIONS);
+      : (useDenseConnections ? MEDIAPIPE_DENSE_CONNECTIONS : MEDIAPIPE_SIMPLIFIED_CONNECTIONS);
 
-    const lineColor = density === 'dense' ? style.lineColorDense : style.lineColor;
+    const lineColor = useDenseConnections ? style.lineColorDense : style.lineColor;
 
     // Desenhar as linhas de conexão primeiro (pontos ficam por cima)
     connectionsToUse.forEach(([fromId, toId]) => {

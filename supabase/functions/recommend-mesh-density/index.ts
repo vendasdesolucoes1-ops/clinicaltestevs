@@ -7,12 +7,19 @@ const corsHeaders = {
 };
 
 interface MeshRecommendation {
-  recommended2D: 'simple' | 'dense';
-  recommended3D: 'rapido' | 'balanceado' | 'maximo';
+  recommended: 'simetria' | 'clinico' | 'avancado' | 'completo';
+  recommendedPoints: number;
   confidence: number;
   reasoning: string;
   focusAreas: string[];
 }
+
+const PRESET_POINTS = {
+  simetria: 30,
+  clinico: 120,
+  avancado: 200,
+  completo: 468,
+};
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -51,14 +58,27 @@ serve(async (req) => {
 
 Sua tarefa é recomendar a densidade ideal de mesh facial para análise, baseado na imagem do paciente.
 
-NÍVEIS DE DENSIDADE 2D:
-- simple (24 pontos): Casos leves, área pequena, avaliação inicial rápida
-- dense (114 pontos): Casos moderados a complexos, planejamento detalhado
+NÍVEIS DE DENSIDADE DISPONÍVEIS:
 
-NÍVEIS DE DENSIDADE 3D:
-- rapido: Visualização rápida, menor precisão
-- balanceado: Equilíbrio entre velocidade e precisão (recomendado para maioria)
-- maximo (468 pontos): Máxima precisão para casos complexos
+1. SIMETRIA (30 pontos):
+   - Análise básica de simetria facial
+   - Ideal para: Triagem inicial, avaliação rápida
+   - Quando usar: Casos simples, pequenas áreas, avaliação preliminar
+
+2. CLÍNICO (120 pontos):
+   - Padrão para planejamento cirúrgico
+   - Ideal para: Queimaduras moderadas, trauma localizado, reconstrução padrão
+   - Quando usar: Maioria dos casos clínicos, bom equilíbrio entre detalhe e velocidade
+
+3. AVANÇADO (200 pontos):
+   - Análise detalhada por região anatômica
+   - Ideal para: Região periorbital, perioral, casos complexos
+   - Quando usar: Áreas sensíveis, múltiplas regiões afetadas, planejamento detalhado
+
+4. COMPLETO (468 pontos):
+   - Máxima precisão com todos os pontos MediaPipe
+   - Ideal para: Pesquisa, casos muito complexos, reconstrução total
+   - Quando usar: Casos extensos, assimetria severa, planejamento de múltiplos procedimentos
 
 CRITÉRIOS DE ANÁLISE:
 1. Extensão da área afetada (% do rosto)
@@ -69,8 +89,8 @@ CRITÉRIOS DE ANÁLISE:
 
 Responda APENAS com um JSON válido no seguinte formato:
 {
-  "recommended2D": "simple" | "dense",
-  "recommended3D": "rapido" | "balanceado" | "maximo",
+  "recommended": "simetria" | "clinico" | "avancado" | "completo",
+  "recommendedPoints": <número de pontos>,
   "confidence": 0.0-1.0,
   "reasoning": "explicação breve em português",
   "focusAreas": ["area1", "area2"]
@@ -138,22 +158,21 @@ Forneça sua recomendação no formato JSON especificado.`;
       console.error('Failed to parse OpenAI response:', parseError);
       // Provide fallback recommendation
       recommendation = {
-        recommended2D: 'dense',
-        recommended3D: 'balanceado',
+        recommended: 'clinico',
+        recommendedPoints: 120,
         confidence: 0.5,
-        reasoning: 'Não foi possível analisar completamente a imagem. Usando configuração padrão balanceada.',
+        reasoning: 'Não foi possível analisar completamente a imagem. Usando configuração padrão clínica.',
         focusAreas: ['face_completa']
       };
     }
 
     // Validate and normalize the response
+    const validPresets = ['simetria', 'clinico', 'avancado', 'completo'] as const;
     const validRecommendation: MeshRecommendation = {
-      recommended2D: ['simple', 'dense'].includes(recommendation.recommended2D) 
-        ? recommendation.recommended2D 
-        : 'dense',
-      recommended3D: ['rapido', 'balanceado', 'maximo'].includes(recommendation.recommended3D)
-        ? recommendation.recommended3D
-        : 'balanceado',
+      recommended: validPresets.includes(recommendation.recommended as any) 
+        ? recommendation.recommended 
+        : 'clinico',
+      recommendedPoints: PRESET_POINTS[recommendation.recommended] || 120,
       confidence: typeof recommendation.confidence === 'number' 
         ? Math.max(0, Math.min(1, recommendation.confidence))
         : 0.7,
@@ -176,10 +195,10 @@ Forneça sua recomendação no formato JSON especificado.`;
         error: error instanceof Error ? error.message : 'Unknown error',
         // Provide fallback recommendation on error
         fallback: {
-          recommended2D: 'dense',
-          recommended3D: 'balanceado',
+          recommended: 'clinico',
+          recommendedPoints: 120,
           confidence: 0.5,
-          reasoning: 'Erro na análise automática. Usando configuração padrão.',
+          reasoning: 'Erro na análise automática. Usando configuração padrão clínica.',
           focusAreas: []
         }
       }),

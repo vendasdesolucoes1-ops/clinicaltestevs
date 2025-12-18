@@ -2,12 +2,17 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
+
 export interface MeshRecommendation {
-  recommended2D: 'simple' | 'dense';
-  recommended3D: 'rapido' | 'balanceado' | 'maximo';
+  recommended: MeshDensity;
+  recommendedPoints: number;
   confidence: number;
   reasoning: string;
   focusAreas: string[];
+  // Legacy fields for backwards compatibility
+  recommended2D?: 'simple' | 'dense';
+  recommended3D?: 'rapido' | 'balanceado' | 'maximo';
 }
 
 interface UseMeshRecommendationReturn {
@@ -61,17 +66,27 @@ export function useMeshRecommendation(): UseMeshRecommendationReturn {
       if (data.error) {
         // Use fallback if provided
         if (data.fallback) {
-          setRecommendation(data.fallback);
+          const fallback = {
+            ...data.fallback,
+            recommended: data.fallback.recommended || 'clinico',
+            recommendedPoints: data.fallback.recommendedPoints || MESH_PRESETS[data.fallback.recommended || 'clinico'].points,
+          };
+          setRecommendation(fallback);
           toast.warning('Usando recomendação padrão', {
-            description: data.fallback.reasoning,
+            description: fallback.reasoning,
           });
-          return data.fallback;
+          return fallback;
         }
         throw new Error(data.error);
       }
 
-      setRecommendation(data);
-      return data;
+      // Ensure recommendedPoints is set
+      const finalData = {
+        ...data,
+        recommendedPoints: data.recommendedPoints || MESH_PRESETS[data.recommended || 'clinico'].points,
+      };
+      setRecommendation(finalData);
+      return finalData;
 
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao obter recomendação';

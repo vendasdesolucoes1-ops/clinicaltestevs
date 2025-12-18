@@ -4,10 +4,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { N8N_FACIAL_ANALYSIS_WEBHOOK, POLLING_INTERVAL_MS, MAX_POLLING_ATTEMPTS } from '@/lib/config';
 import { toast } from 'sonner';
 import { MediaPipeMeshData, MediaPipeWebhookResponse } from '@/types/mediapipeMesh';
+import { type MeshDensity } from '@/types/facialLandmarks';
 
-export type MeshDensity = 'simple' | 'dense';
 export type MeshVisualStyle = 'minimal' | 'standard' | 'detailed';
 export type AnalysisStatus = 'idle' | 'processing' | 'completed' | 'failed';
+
+// Re-export MeshDensity for backwards compatibility
+export { MeshDensity };
 
 interface UseMediaPipeMeshReturn {
   // Mesh data
@@ -37,7 +40,7 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
   const [meshData, setMeshData] = useState<MediaPipeMeshData | null>(null);
   const [visible, setVisible] = useState(true);
   const [opacity, setOpacity] = useState(80);
-  const [density, setDensity] = useState<MeshDensity>('dense');
+  const [density, setDensity] = useState<MeshDensity>('clinico');
   const [visualStyle, setVisualStyle] = useState<MeshVisualStyle>('minimal');
   const [status, setStatus] = useState<AnalysisStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
