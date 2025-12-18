@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
 import { MediaPipeMeshData, MEDIAPIPE_SIMPLIFIED_CONNECTIONS, MEDIAPIPE_DENSE_CONNECTIONS } from '@/types/mediapipeMesh';
 import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
+import { isLandmarkVisible } from '@/types/mediapipeMeshPresets';
 import { ToolType } from './ToolPanel';
 
 export type MeshVisualStyle = 'minimal' | 'standard' | 'detailed';
@@ -113,29 +114,41 @@ export const MediaPipeMeshRenderer = ({
       return;
     }
 
-    const points = meshData.points;
-    if (!Array.isArray(points) || points.length === 0) {
+    const allPoints = meshData.points;
+    if (!Array.isArray(allPoints) || allPoints.length === 0) {
       clearMesh();
       return;
     }
 
     clearMesh();
 
-    // Criar mapa de pontos para acesso rápido
+    // Filtrar pontos baseado no preset selecionado
+    const filteredPoints = density === 'completo' 
+      ? allPoints 
+      : allPoints.filter(point => isLandmarkVisible(point.id, density));
+
+    // Criar mapa de pontos filtrados para acesso rápido
     const pointsMap = new Map<number, { x: number; y: number }>();
+    const visiblePointIds = new Set<number>();
     
     // Converter coordenadas normalizadas para coordenadas do canvas
-    points.forEach(point => {
+    filteredPoints.forEach(point => {
       const canvasX = imageLeft + point.x * imageWidth;
       const canvasY = imageTop + point.y * imageHeight;
       pointsMap.set(point.id, { x: canvasX, y: canvasY });
+      visiblePointIds.add(point.id);
     });
 
-    // Determinar quais conexões usar (use dense for clinico, avancado, completo)
+    // Determinar quais conexões usar
     const useDenseConnections = density !== 'simetria';
-    const connectionsToUse = meshData.connections && meshData.connections.length > 0
+    const baseConnections = meshData.connections && meshData.connections.length > 0
       ? meshData.connections
       : (useDenseConnections ? MEDIAPIPE_DENSE_CONNECTIONS : MEDIAPIPE_SIMPLIFIED_CONNECTIONS);
+
+    // Filtrar conexões - só mostrar se ambos os pontos estão visíveis
+    const connectionsToUse = baseConnections.filter(
+      ([fromId, toId]) => visiblePointIds.has(fromId) && visiblePointIds.has(toId)
+    );
 
     const lineColor = useDenseConnections ? style.lineColorDense : style.lineColor;
 
@@ -166,7 +179,7 @@ export const MediaPipeMeshRenderer = ({
     const pointColor = isInteractiveMode ? style.pointColorMeasure : style.pointColor;
     const interactiveStroke = activeTool === 'angle' ? '#f97316' : '#06b6d4';
     
-    points.forEach(point => {
+    filteredPoints.forEach(point => {
       const coords = pointsMap.get(point.id);
       if (!coords) return;
 
