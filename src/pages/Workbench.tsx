@@ -51,9 +51,9 @@ export default function Workbench() {
   const [analyzedPhotoIds, setAnalyzedPhotoIds] = useState<Set<string>>(new Set());
   
   const { 
-    objects, 
-    undo: stateUndo, 
-    redo: stateRedo,
+    objects,
+    undoStack,
+    redoStack,
     saveVersion,
   } = useCanvasState();
 
@@ -406,15 +406,13 @@ export default function Workbench() {
   // Handlers
   const handleUndo = useCallback(() => {
     canvasRef.current?.undo();
-    stateUndo();
     toast.info('Ação desfeita', { duration: 1500 });
-  }, [stateUndo]);
+  }, []);
 
   const handleRedo = useCallback(() => {
     canvasRef.current?.redo();
-    stateRedo();
     toast.info('Ação refeita', { duration: 1500 });
-  }, [stateRedo]);
+  }, []);
 
   const handleClear = useCallback(() => {
     canvasRef.current?.clear();
@@ -843,8 +841,8 @@ export default function Workbench() {
             onUndo={handleUndo}
             onRedo={handleRedo}
             onClear={handleClear}
-            canUndo={objects.length > 0}
-            canRedo={false}
+            canUndo={undoStack.length > 0}
+            canRedo={redoStack.length > 0}
             isSimulating={isN8nProcessing}
             onTriggerSimulation={handleTriggerSimulation}
             showMesh={showMesh}

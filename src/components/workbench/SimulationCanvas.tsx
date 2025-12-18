@@ -207,6 +207,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       setLayerVisibility,
       setLayerOpacity,
       addObject,
+      clearObjects,
       undo: stateUndo,
       redo: stateRedo,
     } = useCanvasState();
@@ -698,6 +699,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         );
         toRemove.forEach(obj => canvas.remove(obj));
         canvas.renderAll();
+        clearObjects();
         toast.success('Canvas limpo');
       },
       exportImage: () => {
