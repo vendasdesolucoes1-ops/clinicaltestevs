@@ -111,6 +111,9 @@ interface ToolPanelProps {
   // AI Mesh recommendation
   onTriggerMeshAI?: () => void;
   isMeshAILoading?: boolean;
+  
+  // Active points counter
+  activePointsCount?: number;
 }
 
 const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
@@ -186,6 +189,7 @@ export function ToolPanel({
   currentPhotoAngle,
   onTriggerMeshAI,
   isMeshAILoading,
+  activePointsCount,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
   
@@ -376,7 +380,14 @@ export function ToolPanel({
 
                 {/* Density Preset Selector */}
                 <div className="space-y-2">
-                  <Label className="text-xs">Densidade do Mesh</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Densidade do Mesh</Label>
+                    {activePointsCount !== undefined && activePointsCount > 0 && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+                        {activePointsCount} pts ativos
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {(Object.keys(MESH_PRESETS) as MeshDensity[]).map((preset) => {
                       const config = MESH_PRESETS[preset];
