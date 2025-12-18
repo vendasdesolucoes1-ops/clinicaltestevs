@@ -20,6 +20,7 @@ import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
 import { CollapsiblePanel } from '@/components/workbench/CollapsiblePanel';
 import { CanvasContextBar } from '@/components/workbench/CanvasContextBar';
 import { WorkbenchHeader } from '@/components/workbench/WorkbenchHeader';
+import { MeshRecommendationModal } from '@/components/workbench/MeshRecommendationModal';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
@@ -28,6 +29,7 @@ import { useMediaPipeMesh } from '@/hooks/useMediaPipeMesh';
 import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
 import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
 import { useCase3DScans } from '@/hooks/useCase3DScans';
+import { useMeshRecommendation } from '@/hooks/useMeshRecommendation';
 import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
@@ -121,6 +123,16 @@ export default function Workbench() {
     triggerAnalysis: triggerMediaPipeAnalysis,
     clearMesh: clearMediaPipeMesh,
   } = useMediaPipeMesh();
+
+  // AI Mesh recommendation
+  const {
+    recommendation: meshRecommendation,
+    isLoading: isMeshAILoading,
+    getRecommendation: getMeshRecommendation,
+    clearRecommendation: clearMeshRecommendation,
+  } = useMeshRecommendation();
+  
+  const [showMeshAIModal, setShowMeshAIModal] = useState(false);
 
   // Use MediaPipe mesh from n8n or standalone hook
   const mediaPipeMeshData = n8nMediaPipeMeshData || standaloneMediaPipeMeshData;
@@ -455,6 +467,34 @@ export default function Workbench() {
     onSpaceDown: handleSpaceDown,
     onSpaceUp: handleSpaceUp,
   });
+
+  // AI Mesh recommendation handlers
+  const handleTriggerMeshAI = useCallback(async () => {
+    if (!currentImageUrl || currentImageUrl === '/placeholder.svg') {
+      toast.error('Selecione uma foto primeiro');
+      return;
+    }
+    setShowMeshAIModal(true);
+    await getMeshRecommendation({
+      imageUrl: currentImageUrl,
+      caseType: caseData?.type,
+      photoAngle: caseData?.photos.find(p => p.url === currentImageUrl)?.angle,
+      notes: caseData?.notes,
+    });
+  }, [currentImageUrl, caseData, getMeshRecommendation]);
+
+  const handleApplyMeshRecommendation = useCallback((density2D: 'simple' | 'dense', density3D: 'rapido' | 'balanceado' | 'maximo') => {
+    setMeshDensity(density2D);
+    setMediaPipeMeshDensity(density2D);
+    toast.success('Recomendação aplicada', {
+      description: `Mesh 2D: ${density2D === 'simple' ? 'Simples' : 'Denso'}`,
+    });
+    clearMeshRecommendation();
+  }, [setMeshDensity, setMediaPipeMeshDensity, clearMeshRecommendation]);
+
+  const handleManualMeshAdjust = useCallback(() => {
+    clearMeshRecommendation();
+  }, [clearMeshRecommendation]);
 
   // Version management
   const handleCreateVersion = async (type: 'A' | 'B') => {
@@ -899,9 +939,21 @@ export default function Workbench() {
             onGetCanvasImage={() => canvasRef.current?.getCanvasDataUrl() ?? null}
             caseName={caseData?.codename}
             currentPhotoAngle={caseData?.photos.find((p) => p.url === currentImageUrl)?.angle}
+            onTriggerMeshAI={handleTriggerMeshAI}
+            isMeshAILoading={isMeshAILoading}
           />
         </div>
       </CollapsiblePanel>
+
+      {/* AI Mesh Recommendation Modal */}
+      <MeshRecommendationModal
+        open={showMeshAIModal}
+        onOpenChange={setShowMeshAIModal}
+        recommendation={meshRecommendation}
+        isLoading={isMeshAILoading}
+        onApply={handleApplyMeshRecommendation}
+        onManualAdjust={handleManualMeshAdjust}
+      />
     </div>
   );
 }
