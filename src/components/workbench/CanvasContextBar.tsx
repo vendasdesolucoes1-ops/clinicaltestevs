@@ -58,7 +58,11 @@ const TOOL_INSTRUCTIONS: Record<ToolType | 'pan', { action: string; hint: string
   },
   measure: { 
     action: 'Medir', 
-    hint: 'Clique no ponto inicial • Clique no ponto final para medir a distância' 
+    hint: 'Clique em 2 pontos do mesh para medir distância' 
+  },
+  angle: { 
+    action: 'Ângulo', 
+    hint: 'Clique em 3 pontos do mesh • O 2º ponto será o vértice do ângulo' 
   },
   eraser: { 
     action: 'Borracha', 

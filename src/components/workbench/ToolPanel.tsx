@@ -22,6 +22,7 @@ import {
   Sparkles,
   Activity,
   Ruler,
+  Triangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -57,7 +58,7 @@ import { SymmetryIndicator } from './SymmetryIndicator';
 import { WorkflowProgressPanel } from './WorkflowProgressPanel';
 import { AnalysisHistory } from './AnalysisHistory';
 
-export type ToolType = 'select' | 'warp' | 'volume' | 'incision' | 'suture' | 'annotate' | 'eraser' | 'measure';
+export type ToolType = 'select' | 'warp' | 'volume' | 'incision' | 'suture' | 'annotate' | 'eraser' | 'measure' | 'angle';
 
 interface ToolPanelProps {
   activeTool: ToolType;
@@ -118,7 +119,8 @@ const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: st
   { id: 'incision', icon: Scissors, label: 'Incisão', tooltip: 'Desenhe linhas de corte cirúrgico. Configure tipo e profundidade.', shortcut: '4' },
   { id: 'suture', icon: PenTool, label: 'Sutura', tooltip: 'Simule pontos de sutura ao longo de uma linha.', shortcut: '5' },
   { id: 'annotate', icon: Type, label: 'Anotar', tooltip: 'Adicione textos, setas e marcações livres.', shortcut: '6' },
-  { id: 'measure', icon: Ruler, label: 'Medir', tooltip: 'Clique em pontos do mesh facial para medir distâncias entre landmarks (em mm se calibrado).', shortcut: '8' },
+  { id: 'measure', icon: Ruler, label: 'Medir', tooltip: 'Clique em 2 pontos do mesh para medir distância (em mm se calibrado).', shortcut: '8' },
+  { id: 'angle', icon: Triangle, label: 'Ângulo', tooltip: 'Clique em 3 pontos do mesh para medir ângulo (ponto central é o vértice).', shortcut: '9' },
   { id: 'eraser', icon: Eraser, label: 'Borracha', tooltip: 'Apague marcações individuais.', shortcut: '7' },
 ];
 
