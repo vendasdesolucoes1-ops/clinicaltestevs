@@ -13,6 +13,8 @@ import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+import { type MeshVisualStyle } from './MediaPipeMeshRenderer';
+
 interface SimulationCanvasProps {
   imageUrl: string;
   activeTool: ToolType;
@@ -23,6 +25,7 @@ interface SimulationCanvasProps {
   showMesh?: boolean;
   meshOpacity?: number;
   meshDensity?: 'simple' | 'dense';
+  meshVisualStyle?: MeshVisualStyle;
   meshEditMode?: MeshEditMode;
   connectingFrom?: string | null;
   onMeshPointMove?: (pointId: string, x: number, y: number) => void;
@@ -175,7 +178,7 @@ const createWarpArrow = (
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'dense', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'dense', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -748,6 +751,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           visible={showMesh && !!mediaPipeMeshData}
           opacity={meshOpacity}
           density={meshDensity}
+          visualStyle={meshVisualStyle}
           imageWidth={imageBounds.width}
           imageHeight={imageBounds.height}
           imageLeft={imageBounds.left}

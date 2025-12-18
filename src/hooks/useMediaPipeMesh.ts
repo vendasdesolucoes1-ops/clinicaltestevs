@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { MediaPipeMeshData, MediaPipeWebhookResponse } from '@/types/mediapipeMesh';
 
 export type MeshDensity = 'simple' | 'dense';
+export type MeshVisualStyle = 'minimal' | 'standard' | 'detailed';
 export type AnalysisStatus = 'idle' | 'processing' | 'completed' | 'failed';
 
 interface UseMediaPipeMeshReturn {
@@ -20,6 +21,8 @@ interface UseMediaPipeMeshReturn {
   setOpacity: (opacity: number) => void;
   density: MeshDensity;
   setDensity: (density: MeshDensity) => void;
+  visualStyle: MeshVisualStyle;
+  setVisualStyle: (style: MeshVisualStyle) => void;
   
   // Analysis state
   status: AnalysisStatus;
@@ -35,6 +38,7 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
   const [visible, setVisible] = useState(true);
   const [opacity, setOpacity] = useState(80);
   const [density, setDensity] = useState<MeshDensity>('dense');
+  const [visualStyle, setVisualStyle] = useState<MeshVisualStyle>('minimal');
   const [status, setStatus] = useState<AnalysisStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
@@ -204,6 +208,8 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
     setOpacity,
     density,
     setDensity,
+    visualStyle,
+    setVisualStyle,
     status,
     errorMessage,
     triggerAnalysis,

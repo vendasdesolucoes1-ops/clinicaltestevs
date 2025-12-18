@@ -130,6 +130,11 @@
     --mesh-contour: 280 65% 70%;
     --mesh-diagonal: 142 55% 50%;
     --mesh-custom: 25 90% 55%;
+
+    /* Mesh minimalist tokens */
+    --mesh-point: 200 45% 65%;
+    --mesh-line: 200 40% 60%;
+    --mesh-point-hover: 195 55% 55%;
   }
 }
 
