@@ -84,7 +84,66 @@ export interface FacialConnection {
   isCustom?: boolean;
 }
 
-export type MeshDensity = 'simple' | 'dense';
+// ============= MESH DENSITY PRESETS =============
+
+export type MeshDensity = 'simetria' | 'clinico' | 'avancado' | 'completo';
+
+// Legacy type for backwards compatibility
+export type LegacyMeshDensity = 'simple' | 'dense';
+
+export interface MeshPresetConfig {
+  label: string;
+  points: number;
+  description: string;
+  useCase: string;
+  icon: string;
+  color: string;
+}
+
+export const MESH_PRESETS: Record<MeshDensity, MeshPresetConfig> = {
+  simetria: {
+    label: 'Simetria',
+    points: 30,
+    description: 'Análise básica de simetria facial',
+    useCase: 'Triagem, avaliação inicial',
+    icon: '🎯',
+    color: 'hsl(var(--primary))',
+  },
+  clinico: {
+    label: 'Clínico',
+    points: 120,
+    description: 'Padrão para planejamento cirúrgico',
+    useCase: 'Queimaduras, trauma, reconstrução',
+    icon: '📐',
+    color: 'hsl(var(--chart-2))',
+  },
+  avancado: {
+    label: 'Avançado',
+    points: 200,
+    description: 'Análise detalhada por região',
+    useCase: 'Periorbital, perioral, complexo',
+    icon: '🔬',
+    color: 'hsl(var(--chart-3))',
+  },
+  completo: {
+    label: 'Completo',
+    points: 468,
+    description: 'Máxima precisão (MediaPipe Full)',
+    useCase: 'Pesquisa, casos muito complexos',
+    icon: '⚡',
+    color: 'hsl(var(--chart-4))',
+  },
+};
+
+// Helper to convert legacy density to new presets
+export function legacyToNewDensity(legacy: LegacyMeshDensity): MeshDensity {
+  return legacy === 'simple' ? 'simetria' : 'clinico';
+}
+
+// Helper to convert new density to legacy (for backwards compatibility)
+export function newToLegacyDensity(density: MeshDensity): LegacyMeshDensity {
+  return density === 'simetria' ? 'simple' : 'dense';
+}
 
 export interface FacialMeshData {
   points: FacialPoint[];
@@ -245,8 +304,8 @@ export const generateSmartConnections = (
   addConnection('malar_left', 'malar_right', 'horizontal');
   addConnection('gonion_left', 'gonion_right', 'horizontal');
 
-  // === CONEXÕES DENSAS (apenas se density === 'dense') ===
-  if (density === 'dense') {
+  // === CONEXÕES DENSAS (para densidades maiores) ===
+  if (density === 'clinico' || density === 'avancado' || density === 'completo') {
     // Testa → Olhos (conexões diagonais válidas)
     addConnection('metopion', 'supercilium_left_3', 'diagonal');
     addConnection('metopion', 'supercilium_right_3', 'diagonal');
@@ -290,7 +349,8 @@ export const getConnectionsByDensity = (density: MeshDensity, points?: FacialPoi
   if (points && points.length > 10) {
     return generateSmartConnections(points, density, midlinePoints);
   }
-  return density === 'simple' ? SIMPLE_CONNECTIONS : DENSE_CONNECTIONS;
+  // Use simple connections for 'simetria', dense for others
+  return density === 'simetria' ? SIMPLE_CONNECTIONS : DENSE_CONNECTIONS;
 };
 
 // ============= CONEXÕES ESTÁTICAS (FALLBACK) =============

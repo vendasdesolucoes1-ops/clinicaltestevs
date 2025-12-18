@@ -59,7 +59,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   const [meshData, setMeshData] = useState<FacialMeshData | null>(null);
   const [mediaPipeMeshData, setMediaPipeMeshData] = useState<MediaPipeMeshData | null>(null);
   const [faceROI, setFaceROI] = useState<FaceROI | null>(null);
-  const [meshDensity, setMeshDensity] = useState<MeshDensity>('dense');
+  const [meshDensity, setMeshDensity] = useState<MeshDensity>('clinico');
   const [createdVersion, setCreatedVersion] = useState<CreatedVersion | null>(null);
   
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
