@@ -5,8 +5,9 @@ import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { RotateCcw, ZoomIn, ZoomOut, Grid3X3, Layers, Settings2 } from 'lucide-react';
+import { RotateCcw, ZoomIn, ZoomOut, Grid3X3, Layers, Settings2, User, Square, MoveVertical } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { Landmark3D } from '@/types/faceMesh3D';
 
 interface DeformationParams {
@@ -14,6 +15,24 @@ interface DeformationParams {
   influenceRadius: number; // 0-1: how far each landmark affects vertices
   depthScale: number;      // 0-1: Z-axis deformation scale
 }
+
+type FacialPreset = 'custom' | 'oval' | 'quadrado' | 'alongado';
+
+// Presets otimizados para tipos faciais comuns
+const FACIAL_PRESETS: Record<Exclude<FacialPreset, 'custom'>, { params: DeformationParams; description: string }> = {
+  oval: {
+    params: { intensity: 0.45, influenceRadius: 0.55, depthScale: 0.5 },
+    description: 'Rosto oval/equilibrado - suavidade natural',
+  },
+  quadrado: {
+    params: { intensity: 0.6, influenceRadius: 0.4, depthScale: 0.65 },
+    description: 'Maxilar pronunciado - ênfase angular',
+  },
+  alongado: {
+    params: { intensity: 0.5, influenceRadius: 0.65, depthScale: 0.4 },
+    description: 'Rosto alongado - proporções verticais',
+  },
+};
 
 interface HybridFaceMesh3DProps {
   landmarks: Landmark3D[];
@@ -296,13 +315,25 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
   const [showWireframe, setShowWireframe] = useState(wireframe);
   const [showOverlay, setShowOverlay] = useState(false);
   const [showParams, setShowParams] = useState(false);
+  const [activePreset, setActivePreset] = useState<FacialPreset>('oval');
   
-  // Deformation parameters with defaults
-  const [deformParams, setDeformParams] = useState<DeformationParams>({
-    intensity: 0.5,
-    influenceRadius: 0.5,
-    depthScale: 0.5,
-  });
+  // Deformation parameters with defaults (start with oval preset)
+  const [deformParams, setDeformParams] = useState<DeformationParams>(
+    FACIAL_PRESETS.oval.params
+  );
+
+  const handlePresetChange = (preset: FacialPreset) => {
+    setActivePreset(preset);
+    if (preset !== 'custom') {
+      setDeformParams(FACIAL_PRESETS[preset].params);
+    }
+  };
+
+  const handleParamChange = (key: keyof DeformationParams, value: number) => {
+    setActivePreset('custom');
+    setDeformParams(p => ({ ...p, [key]: value }));
+  };
+
   const handleReset = () => {
     if (controlsRef.current) {
       controlsRef.current.reset();
@@ -392,12 +423,45 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
 
       {/* Deformation Parameters Panel */}
       <Collapsible open={showParams} onOpenChange={setShowParams}>
-        <CollapsibleContent className="absolute top-14 right-3 z-10 w-64 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg p-3 space-y-4">
+        <CollapsibleContent className="absolute top-14 right-3 z-10 w-72 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg p-3 space-y-4">
           <div className="text-xs font-semibold text-foreground border-b pb-2">
             Parâmetros de Deformação
           </div>
+
+          {/* Preset Selector */}
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">Tipo Facial</Label>
+            <ToggleGroup 
+              type="single" 
+              value={activePreset} 
+              onValueChange={(v) => v && handlePresetChange(v as FacialPreset)}
+              className="grid grid-cols-4 gap-1"
+            >
+              <ToggleGroupItem value="oval" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]" title="Rosto oval/equilibrado">
+                <User className="h-3.5 w-3.5" />
+                <span>Oval</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="quadrado" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]" title="Maxilar pronunciado">
+                <Square className="h-3.5 w-3.5" />
+                <span>Quadrado</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="alongado" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]" title="Rosto alongado">
+                <MoveVertical className="h-3.5 w-3.5" />
+                <span>Alongado</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="custom" className="flex flex-col gap-0.5 h-auto py-1.5 px-1 text-[10px]" title="Configuração personalizada">
+                <Settings2 className="h-3.5 w-3.5" />
+                <span>Custom</span>
+              </ToggleGroupItem>
+            </ToggleGroup>
+            {activePreset !== 'custom' && (
+              <p className="text-[10px] text-muted-foreground italic">
+                {FACIAL_PRESETS[activePreset].description}
+              </p>
+            )}
+          </div>
           
-          <div className="space-y-3">
+          <div className="space-y-3 pt-2 border-t">
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
                 <Label className="text-xs">Intensidade</Label>
@@ -405,7 +469,7 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               </div>
               <Slider
                 value={[deformParams.intensity * 100]}
-                onValueChange={([v]) => setDeformParams(p => ({ ...p, intensity: v / 100 }))}
+                onValueChange={([v]) => handleParamChange('intensity', v / 100)}
                 min={0}
                 max={100}
                 step={5}
@@ -421,7 +485,7 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               </div>
               <Slider
                 value={[deformParams.influenceRadius * 100]}
-                onValueChange={([v]) => setDeformParams(p => ({ ...p, influenceRadius: v / 100 }))}
+                onValueChange={([v]) => handleParamChange('influenceRadius', v / 100)}
                 min={0}
                 max={100}
                 step={5}
@@ -437,7 +501,7 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               </div>
               <Slider
                 value={[deformParams.depthScale * 100]}
-                onValueChange={([v]) => setDeformParams(p => ({ ...p, depthScale: v / 100 }))}
+                onValueChange={([v]) => handleParamChange('depthScale', v / 100)}
                 min={0}
                 max={100}
                 step={5}
@@ -451,9 +515,9 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
             variant="outline"
             size="sm"
             className="w-full text-xs"
-            onClick={() => setDeformParams({ intensity: 0.5, influenceRadius: 0.5, depthScale: 0.5 })}
+            onClick={() => handlePresetChange('oval')}
           >
-            Restaurar Padrões
+            Restaurar Padrões (Oval)
           </Button>
         </CollapsibleContent>
       </Collapsible>
