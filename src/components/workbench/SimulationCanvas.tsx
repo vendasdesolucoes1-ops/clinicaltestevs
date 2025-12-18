@@ -4,6 +4,7 @@ import * as fabric from 'fabric';
 import { ToolType } from './ToolPanel';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasStatusBar } from './CanvasStatusBar';
+import { CanvasRuler } from './CanvasRuler';
 import { FacialMesh } from './FacialMesh';
 import { MediaPipeMeshRenderer } from './MediaPipeMeshRenderer';
 import { useCanvasState, Point, CanvasObject } from '@/hooks/useCanvasState';
@@ -763,6 +764,16 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         onMouseLeave={() => setIsMouseOverCanvas(false)}
       >
         <canvas ref={canvasRef} />
+
+        {/* Measurement Rulers */}
+        <CanvasRuler
+          visible={showRuler}
+          zoom={zoom}
+          panX={fabricRef.current?.viewportTransform?.[4] || 0}
+          panY={fabricRef.current?.viewportTransform?.[5] || 0}
+          containerWidth={containerRef.current?.clientWidth || 0}
+          containerHeight={containerRef.current?.clientHeight || 0}
+        />
 
         {/* Cursor Size Preview */}
         {showCursorPreview && (
