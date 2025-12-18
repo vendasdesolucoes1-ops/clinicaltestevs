@@ -16,29 +16,29 @@ interface LandmarkOverlay3DProps {
   visualStyle?: 'minimal' | 'standard' | 'detailed';
 }
 
-// Visual style presets
+// Visual style presets - much smaller point sizes for 3D model overlay
 const STYLE_PRESETS = {
   minimal: {
-    pointSize: 0.008,
-    pointOpacity: 0.6,
+    pointSize: 0.002,     // Very small points
+    pointOpacity: 0.7,
     lineOpacity: 0.3,
     lineWidth: 0.5,
-    pointColor: '#8BA4B8',
-    lineColor: '#6B8A9E',
+    pointColor: '#60A5FA',
+    lineColor: '#3B82F6',
   },
   standard: {
-    pointSize: 0.012,
-    pointOpacity: 0.8,
-    lineOpacity: 0.5,
+    pointSize: 0.003,     // Small points
+    pointOpacity: 0.85,
+    lineOpacity: 0.4,
     lineWidth: 0.8,
     pointColor: '#60A5FA',
     lineColor: '#3B82F6',
   },
   detailed: {
-    pointSize: 0.018,
+    pointSize: 0.004,     // Slightly larger but still subtle
     pointOpacity: 1.0,
-    lineOpacity: 0.7,
-    lineWidth: 1.2,
+    lineOpacity: 0.6,
+    lineWidth: 1.0,
     pointColor: '#34D399',
     lineColor: '#10B981',
   },

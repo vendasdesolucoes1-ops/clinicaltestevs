@@ -315,12 +315,12 @@ export function ToolPanel({
                   <div className="flex items-center justify-between">
                     <Label className="text-xs">Opacidade</Label>
                     <span className="text-xs text-muted-foreground font-mono">
-                      {Math.round(meshOpacity * 100)}%
+                      {Math.round(meshOpacity)}%
                     </span>
                   </div>
                   <Slider
-                    value={[meshOpacity * 100]}
-                    onValueChange={([v]) => onMeshOpacityChange(v / 100)}
+                    value={[meshOpacity]}
+                    onValueChange={([v]) => onMeshOpacityChange(v)}
                     min={10}
                     max={100}
                     step={5}
