@@ -1,5 +1,5 @@
 // Tool Panel - Right side panel with tools and simulation controls - v3
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Move,
   Scissors,
@@ -154,6 +154,45 @@ const INSTRUMENTS = [
   { value: 'bisturi_10', label: 'Bisturi nº 10' },
   { value: 'eletrico', label: 'Elétrico' },
 ];
+
+// Animated counter component for smooth number transitions
+function AnimatedCounter({ count }: { count: number }) {
+  const [displayCount, setDisplayCount] = useState(count);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const prevCountRef = useRef(count);
+
+  useEffect(() => {
+    if (prevCountRef.current !== count) {
+      setIsAnimating(true);
+      
+      // Quick fade out, update number, fade in
+      const timeout = setTimeout(() => {
+        setDisplayCount(count);
+        prevCountRef.current = count;
+      }, 100);
+
+      const resetAnimation = setTimeout(() => {
+        setIsAnimating(false);
+      }, 300);
+
+      return () => {
+        clearTimeout(timeout);
+        clearTimeout(resetAnimation);
+      };
+    }
+  }, [count]);
+
+  return (
+    <span 
+      className={cn(
+        "text-[10px] font-mono px-1.5 py-0.5 bg-primary/10 text-primary rounded transition-all duration-200",
+        isAnimating && "scale-110 bg-primary/20"
+      )}
+    >
+      {displayCount} pts ativos
+    </span>
+  );
+}
 
 export function ToolPanel({
   activeTool,
@@ -383,9 +422,7 @@ export function ToolPanel({
                   <div className="flex items-center justify-between">
                     <Label className="text-xs">Densidade do Mesh</Label>
                     {activePointsCount !== undefined && activePointsCount > 0 && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 bg-primary/10 text-primary rounded">
-                        {activePointsCount} pts ativos
-                      </span>
+                      <AnimatedCounter count={activePointsCount} />
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
