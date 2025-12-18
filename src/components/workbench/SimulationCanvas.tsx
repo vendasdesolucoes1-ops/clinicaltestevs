@@ -50,20 +50,20 @@ export interface SimulationCanvasRef {
 }
 
 const TOOL_COLORS: Record<ToolType, string> = {
-  select: '#0ea5e9',
-  warp: '#f59e0b',
+  select: '#f59e0b', // Puxar pele (warp arrows)
+  warp: '#0ea5e9',   // Selecionar objetos
   volume: '#22c55e',
   incision: '#ef4444',
   suture: '#8b5cf6',
   annotate: '#0ea5e9',
   eraser: '#64748b',
-  measure: '#06b6d4',
+  measure: '#7c3aed', // Purple like reference app
   angle: '#f97316',
 };
 
 const TOOL_CURSORS: Record<ToolType, string> = {
-  select: 'default',
-  warp: 'crosshair',
+  select: 'crosshair', // Puxar pele
+  warp: 'default',     // Selecionar objetos
   volume: 'crosshair',
   incision: 'crosshair',
   suture: 'crosshair',
@@ -403,7 +403,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       // Only incision and suture use free drawing mode
       const drawingTools = ['incision', 'suture'];
       canvas.isDrawingMode = drawingTools.includes(activeTool);
-      canvas.selection = activeTool === 'select';
+      canvas.selection = activeTool === 'warp'; // warp = selecionar objetos
       
       if (canvas.isDrawingMode && canvas.freeDrawingBrush) {
         if (activeTool === 'incision') {
@@ -540,7 +540,8 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           addObject(canvasObj);
           onObjectAdded?.(canvasObj);
           toast.success(toolParams.volumeMode === 'add' ? 'Volume adicionado' : 'Volume removido');
-        } else if (activeTool === 'warp') {
+        } else if (activeTool === 'select') {
+          // select = Puxar Pele (draw traction arrows)
           warpStartRef.current = { x: pointer.x, y: pointer.y };
         } else if (activeTool === 'annotate') {
           const text = prompt('Digite sua anotação:');
@@ -573,6 +574,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             toast.success('Anotação adicionada');
           }
         } else if (activeTool === 'measure') {
+          // Free canvas measurement - click anywhere on image
           if (!measureStart) {
             // First click - set start point
             setMeasureStart({ x: pointer.x, y: pointer.y });
@@ -593,17 +595,18 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             const pixelDistance = Math.sqrt(dx * dx + dy * dy);
             
             if (isCalibrated && pixelsPerMm) {
-              const mmDistance = pixelDistance / pixelsPerMm;
-              toast.success(`Distância: ${mmDistance.toFixed(2)} mm`);
+              const cmDistance = pixelDistance / pixelsPerMm / 10; // mm to cm
+              toast.success(`Distância: ${cmDistance.toFixed(2)} cm`);
             } else {
-              toast.success(`Distância: ${pixelDistance.toFixed(1)} px (calibre para ver em mm)`);
+              toast.success(`Distância: ${pixelDistance.toFixed(1)} px (calibre para ver em cm)`);
             }
           }
         }
       };
 
       const handleMouseUp = (e: any) => {
-        if (activeTool === 'warp' && warpStartRef.current) {
+        // select = Puxar Pele (creates warp arrows)
+        if (activeTool === 'select' && warpStartRef.current) {
           const pointer = canvas.getPointer(e.e);
           const start = warpStartRef.current;
           
@@ -975,7 +978,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           onCalibrate={startCalibration}
         />
 
-        {/* Measurement Overlay */}
+        {/* Measurement Overlay - Styled like reference app */}
         {(measureStart || measurements.length > 0) && (
           <svg
             className="absolute inset-0 z-25 pointer-events-none"
@@ -993,43 +996,69 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
               const dy = m.end.y - m.start.y;
               const pixelDist = Math.sqrt(dx * dx + dy * dy);
               const displayDist = isCalibrated && pixelsPerMm 
-                ? `${(pixelDist / pixelsPerMm).toFixed(2)} mm` 
+                ? `${(pixelDist / pixelsPerMm / 10).toFixed(2)} cm` 
                 : `${pixelDist.toFixed(1)} px`;
               
               const midX = (startScreen.x + endScreen.x) / 2;
               const midY = (startScreen.y + endScreen.y) / 2;
               
+              // Calculate angle for perpendicular tick marks
+              const angle = Math.atan2(endScreen.y - startScreen.y, endScreen.x - startScreen.x);
+              const perpAngle = angle + Math.PI / 2;
+              const tickLength = 8;
+              
               return (
                 <g key={m.id}>
-                  {/* Measurement line */}
+                  {/* Main measurement line - solid purple */}
                   <line
                     x1={startScreen.x}
                     y1={startScreen.y}
                     x2={endScreen.x}
                     y2={endScreen.y}
-                    stroke="#06b6d4"
-                    strokeWidth={2}
-                    strokeDasharray="6 3"
+                    stroke="#7c3aed"
+                    strokeWidth={3}
+                    strokeLinecap="round"
                   />
-                  {/* End points */}
-                  <circle cx={startScreen.x} cy={startScreen.y} r={5} fill="#06b6d4" />
-                  <circle cx={endScreen.x} cy={endScreen.y} r={5} fill="#06b6d4" />
-                  {/* Distance label */}
+                  
+                  {/* Start tick mark (perpendicular) */}
+                  <line
+                    x1={startScreen.x - Math.cos(perpAngle) * tickLength}
+                    y1={startScreen.y - Math.sin(perpAngle) * tickLength}
+                    x2={startScreen.x + Math.cos(perpAngle) * tickLength}
+                    y2={startScreen.y + Math.sin(perpAngle) * tickLength}
+                    stroke="#7c3aed"
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                  />
+                  
+                  {/* End tick mark (perpendicular) */}
+                  <line
+                    x1={endScreen.x - Math.cos(perpAngle) * tickLength}
+                    y1={endScreen.y - Math.sin(perpAngle) * tickLength}
+                    x2={endScreen.x + Math.cos(perpAngle) * tickLength}
+                    y2={endScreen.y + Math.sin(perpAngle) * tickLength}
+                    stroke="#7c3aed"
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                  />
+                  
+                  {/* Distance label with background */}
                   <rect
-                    x={midX - 30}
-                    y={midY - 12}
-                    width={60}
-                    height={20}
+                    x={midX - 35}
+                    y={midY - 14}
+                    width={70}
+                    height={24}
                     rx={4}
                     fill="hsl(var(--background))"
-                    stroke="#06b6d4"
-                    strokeWidth={1}
+                    stroke="#7c3aed"
+                    strokeWidth={2}
                   />
                   <text
                     x={midX}
-                    y={midY + 4}
+                    y={midY + 5}
                     textAnchor="middle"
-                    className="fill-foreground text-xs font-mono font-medium"
+                    fill="#7c3aed"
+                    className="text-sm font-bold font-mono"
                   >
                     {displayDist}
                   </text>
@@ -1050,45 +1079,72 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
                   const dy = cursorPosition.y - measureStart.y;
                   const pixelDist = Math.sqrt(dx * dx + dy * dy);
                   const displayDist = isCalibrated && pixelsPerMm 
-                    ? `${(pixelDist / pixelsPerMm).toFixed(2)} mm` 
+                    ? `${(pixelDist / pixelsPerMm / 10).toFixed(2)} cm` 
                     : `${pixelDist.toFixed(1)} px`;
                   
                   const midX = (startScreen.x + endScreen.x) / 2;
                   const midY = (startScreen.y + endScreen.y) / 2;
                   
+                  // Calculate angle for perpendicular tick marks
+                  const angle = Math.atan2(endScreen.y - startScreen.y, endScreen.x - startScreen.x);
+                  const perpAngle = angle + Math.PI / 2;
+                  const tickLength = 8;
+                  
                   return (
                     <>
-                      {/* Preview line */}
+                      {/* Preview line - solid purple */}
                       <line
                         x1={startScreen.x}
                         y1={startScreen.y}
                         x2={endScreen.x}
                         y2={endScreen.y}
-                        stroke="#06b6d4"
-                        strokeWidth={2}
-                        strokeDasharray="6 3"
-                        opacity={0.7}
+                        stroke="#7c3aed"
+                        strokeWidth={3}
+                        strokeLinecap="round"
+                        opacity={0.8}
                       />
-                      {/* Start point */}
-                      <circle cx={startScreen.x} cy={startScreen.y} r={5} fill="#06b6d4" />
+                      
+                      {/* Start tick mark */}
+                      <line
+                        x1={startScreen.x - Math.cos(perpAngle) * tickLength}
+                        y1={startScreen.y - Math.sin(perpAngle) * tickLength}
+                        x2={startScreen.x + Math.cos(perpAngle) * tickLength}
+                        y2={startScreen.y + Math.sin(perpAngle) * tickLength}
+                        stroke="#7c3aed"
+                        strokeWidth={3}
+                        strokeLinecap="round"
+                      />
+                      
                       {/* Preview distance */}
                       {pixelDist > 20 && (
                         <>
+                          {/* End tick mark (preview) */}
+                          <line
+                            x1={endScreen.x - Math.cos(perpAngle) * tickLength}
+                            y1={endScreen.y - Math.sin(perpAngle) * tickLength}
+                            x2={endScreen.x + Math.cos(perpAngle) * tickLength}
+                            y2={endScreen.y + Math.sin(perpAngle) * tickLength}
+                            stroke="#7c3aed"
+                            strokeWidth={3}
+                            strokeLinecap="round"
+                            opacity={0.8}
+                          />
                           <rect
-                            x={midX - 30}
-                            y={midY - 12}
-                            width={60}
-                            height={20}
+                            x={midX - 35}
+                            y={midY - 14}
+                            width={70}
+                            height={24}
                             rx={4}
-                            fill="hsl(var(--background) / 0.9)"
-                            stroke="#06b6d4"
-                            strokeWidth={1}
+                            fill="hsl(var(--background) / 0.95)"
+                            stroke="#7c3aed"
+                            strokeWidth={2}
                           />
                           <text
                             x={midX}
-                            y={midY + 4}
+                            y={midY + 5}
                             textAnchor="middle"
-                            className="fill-foreground text-xs font-mono font-medium"
+                            fill="#7c3aed"
+                            className="text-sm font-bold font-mono"
                           >
                             {displayDist}
                           </text>

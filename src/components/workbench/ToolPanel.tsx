@@ -108,18 +108,18 @@ interface ToolPanelProps {
 }
 
 const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
-  { id: 'select', icon: Move, label: 'Selecionar', tooltip: 'Selecione e mova elementos', shortcut: '1' },
-  { id: 'warp', icon: () => (
+  { id: 'select', icon: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
       <path d="M12 3v18M3 12h18" strokeLinecap="round" />
       <path d="M8 8c0-2 2-4 4-4s4 2 4 4M8 16c0 2 2 4 4 4s4-2 4-4" strokeLinecap="round" />
     </svg>
-  ), label: 'Puxar Pele', tooltip: 'Clique e arraste para simular tração de pele. Ajuste raio e intensidade.', shortcut: '2' },
+  ), label: 'Puxar Pele', tooltip: 'Clique e arraste para simular tração de pele. Ajuste raio e intensidade.', shortcut: '1' },
+  { id: 'warp', icon: Move, label: 'Selecionar', tooltip: 'Selecione e mova elementos no canvas.', shortcut: '2' },
   { id: 'volume', icon: Circle, label: 'Volume', tooltip: 'Adicione (+) ou remova (-) volume tecidual com o brush.', shortcut: '3' },
   { id: 'incision', icon: Scissors, label: 'Incisão', tooltip: 'Desenhe linhas de corte cirúrgico. Configure tipo e profundidade.', shortcut: '4' },
   { id: 'suture', icon: PenTool, label: 'Sutura', tooltip: 'Simule pontos de sutura ao longo de uma linha.', shortcut: '5' },
   { id: 'annotate', icon: Type, label: 'Anotar', tooltip: 'Adicione textos, setas e marcações livres.', shortcut: '6' },
-  { id: 'measure', icon: Ruler, label: 'Medir', tooltip: 'Clique em 2 pontos do mesh para medir distância (em mm se calibrado).', shortcut: '8' },
+  { id: 'measure', icon: Ruler, label: 'Medir', tooltip: 'Clique em 2 pontos QUAISQUER da imagem para medir distância (em cm se calibrado).', shortcut: '8' },
   { id: 'angle', icon: Triangle, label: 'Ângulo', tooltip: 'Clique em 3 pontos do mesh para medir ângulo (ponto central é o vértice).', shortcut: '9' },
   { id: 'eraser', icon: Eraser, label: 'Borracha', tooltip: 'Apague marcações individuais.', shortcut: '7' },
 ];

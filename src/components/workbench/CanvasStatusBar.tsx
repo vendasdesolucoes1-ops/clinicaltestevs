@@ -17,8 +17,8 @@ interface CanvasStatusBarProps {
 }
 
 const TOOL_LABELS: Record<ToolType, string> = {
-  select: 'Selecionar',
-  warp: 'Puxar Pele',
+  select: 'Puxar Pele',
+  warp: 'Selecionar',
   volume: 'Volume',
   incision: 'Incisão',
   suture: 'Sutura',
