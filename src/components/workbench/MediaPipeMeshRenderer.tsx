@@ -95,7 +95,8 @@ export const MediaPipeMeshRenderer = ({
   const [tooltip, setTooltip] = useState<{ x: number; y: number; id: number } | null>(null);
 
   const style = MESH_STYLES[visualStyle];
-  const isInteractiveMode = activeTool === 'measure' || activeTool === 'angle';
+  // Only angle tool needs interactive mesh points (measure works on any canvas point now)
+  const isInteractiveMode = activeTool === 'angle';
 
   const clearMesh = useCallback(() => {
     if (!canvas) return;

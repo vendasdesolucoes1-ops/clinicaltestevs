@@ -33,12 +33,12 @@ interface CanvasContextBarProps {
 
 const TOOL_INSTRUCTIONS: Record<ToolType | 'pan', { action: string; hint: string }> = {
   select: { 
-    action: 'Selecionar', 
-    hint: 'Clique para selecionar • Arraste para mover • Delete para remover' 
-  },
-  warp: { 
     action: 'Puxar Pele', 
     hint: 'Clique e arraste para simular tração de pele na direção do movimento' 
+  },
+  warp: { 
+    action: 'Selecionar', 
+    hint: 'Clique para selecionar • Arraste para mover • Delete para remover' 
   },
   volume: { 
     action: 'Volume', 
@@ -58,7 +58,7 @@ const TOOL_INSTRUCTIONS: Record<ToolType | 'pan', { action: string; hint: string
   },
   measure: { 
     action: 'Medir', 
-    hint: 'Clique em 2 pontos do mesh para medir distância' 
+    hint: 'Clique em 2 pontos QUAISQUER da imagem para medir distância (cm)' 
   },
   angle: { 
     action: 'Ângulo', 
