@@ -312,9 +312,15 @@ const DeformedGLTFMesh: React.FC<{
     return geo;
   }, [originalGeometry, keyLandmarks, landmarkWeights, deformParams, density]);
 
-  // UV mapping
+  // ============================================================================
+  // UV MAPPING GUIADO POR LANDMARKS
+  // ============================================================================
+  // Para cada vértice 3D, encontra os landmarks mais próximos e interpola
+  // suas coordenadas UV originais (da foto 2D) para criar correspondência correta
+  // ============================================================================
+  
   const projectedGeometry = useMemo(() => {
-    if (!deformedGeometry) return null;
+    if (!deformedGeometry || keyLandmarks.length === 0) return null;
     
     const geo = deformedGeometry.clone();
     const positions = geo.attributes.position.array as Float32Array;
@@ -324,24 +330,101 @@ const DeformedGLTFMesh: React.FC<{
     const size = new THREE.Vector3();
     bbox.getSize(size);
     
+    // Preparar landmarks com suas coordenadas originais de UV (da foto)
+    // e posições 3D normalizadas no espaço do modelo
+    const landmarkData = keyLandmarks.map((lm, idx) => {
+      // Coordenadas UV originais da foto (0-1)
+      // lm.x e lm.y são normalizados 0-1 vindos do MediaPipe
+      const originalU = lm.x;
+      const originalV = 1 - lm.y; // Inverter Y para UV do Three.js
+      
+      // Posição 3D normalizada no espaço do modelo
+      const pos3D = {
+        x: (lm.x - 0.5) * size.x,
+        y: (lm.y - 0.5) * size.y,
+        z: lm.z * (size.z || 0.5)
+      };
+      
+      return {
+        originalU,
+        originalV,
+        pos3D,
+        weight: landmarkWeights[idx] || 1.0
+      };
+    });
+    
     const uvs = new Float32Array((positions.length / 3) * 2);
+    const NUM_NEAREST = 6; // Quantidade de landmarks para interpolação
+    const FALLOFF_POWER = 2.5; // Controla suavidade da interpolação
     
     for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i];
-      const y = positions[i + 1];
+      const vx = positions[i];
+      const vy = positions[i + 1];
+      const vz = positions[i + 2];
       
-      const u = (x - bbox.min.x) / size.x;
-      const v = (y - bbox.min.y) / size.y;
+      // Calcular distância para cada landmark e ordenar
+      const distances: { dist: number; idx: number }[] = [];
       
+      landmarkData.forEach((lm, idx) => {
+        const dx = vx - lm.pos3D.x;
+        const dy = vy - lm.pos3D.y;
+        const dz = (vz - lm.pos3D.z) * 0.3; // Reduzir peso da profundidade
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        distances.push({ dist, idx });
+      });
+      
+      // Ordenar por distância e pegar os N mais próximos
+      distances.sort((a, b) => a.dist - b.dist);
+      const nearest = distances.slice(0, NUM_NEAREST);
+      
+      // Verificar se há landmarks muito próximos (distância quase zero)
+      const minDist = nearest[0].dist;
+      
+      if (minDist < 0.001) {
+        // Vértice está exatamente sobre um landmark - usar UV diretamente
+        const lm = landmarkData[nearest[0].idx];
+        const uvIndex = (i / 3) * 2;
+        uvs[uvIndex] = lm.originalU;
+        uvs[uvIndex + 1] = lm.originalV;
+        continue;
+      }
+      
+      // Calcular pesos por distância inversa (IDW - Inverse Distance Weighting)
+      let totalWeight = 0;
+      let u = 0, v = 0;
+      
+      nearest.forEach(({ dist, idx }) => {
+        const lm = landmarkData[idx];
+        // Peso = 1/d^power * peso da região anatômica
+        const distWeight = 1 / Math.pow(dist + 0.01, FALLOFF_POWER);
+        const combinedWeight = distWeight * lm.weight;
+        
+        u += lm.originalU * combinedWeight;
+        v += lm.originalV * combinedWeight;
+        totalWeight += combinedWeight;
+      });
+      
+      // Normalizar
+      if (totalWeight > 0) {
+        u /= totalWeight;
+        v /= totalWeight;
+      } else {
+        // Fallback: projeção planar simples
+        u = (vx - bbox.min.x) / size.x;
+        v = (vy - bbox.min.y) / size.y;
+      }
+      
+      // Aplicar pequeno ajuste para centralizar a face na textura
+      // (o modelo GLTF pode ter offset diferente da foto)
       const uvIndex = (i / 3) * 2;
-      uvs[uvIndex] = u;
-      uvs[uvIndex + 1] = v;
+      uvs[uvIndex] = Math.max(0, Math.min(1, u));
+      uvs[uvIndex + 1] = Math.max(0, Math.min(1, v));
     }
     
     geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     
     return geo;
-  }, [deformedGeometry]);
+  }, [deformedGeometry, keyLandmarks, landmarkWeights]);
 
   if (!projectedGeometry) return null;
 
