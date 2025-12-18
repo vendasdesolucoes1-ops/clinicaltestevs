@@ -179,8 +179,9 @@ export const PatientModelViewer: React.FC<PatientModelViewerProps> = ({
   const controlsRef = useRef<any>(null);
   const [showWireframe, setShowWireframe] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
-  const [showLandmarks, setShowLandmarks] = useState(true);
-  const [landmarkOpacity, setLandmarkOpacity] = useState(80);
+  // Landmarks disabled by default - projection requires proper photo-to-scan alignment
+  const [showLandmarks, setShowLandmarks] = useState(false);
+  const [landmarkOpacity, setLandmarkOpacity] = useState(60);
   const [isLoading, setIsLoading] = useState(true);
 
   const hasLandmarks = landmarks2D && landmarks2D.length > 0;
@@ -218,7 +219,7 @@ export const PatientModelViewer: React.FC<PatientModelViewerProps> = ({
             size="icon"
             className="h-8 w-8 bg-background/80 backdrop-blur-sm"
             onClick={() => setShowLandmarks(!showLandmarks)}
-            title={showLandmarks ? "Ocultar Landmarks" : "Mostrar Landmarks"}
+            title={showLandmarks ? "Ocultar Landmarks (Experimental)" : "Mostrar Landmarks (Experimental - requer alinhamento)"}
           >
             <Crosshair className="h-4 w-4" />
           </Button>
@@ -338,9 +339,9 @@ export const PatientModelViewer: React.FC<PatientModelViewerProps> = ({
 
       {/* Landmark info badge */}
       {hasLandmarks && showLandmarks && (
-        <div className="absolute top-12 left-3 z-10 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+        <div className="absolute top-12 left-3 z-10 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
           <Crosshair className="h-3 w-3" />
-          {landmarks2D?.length} landmarks projetados
+          {landmarks2D?.length} landmarks (experimental - requer alinhamento)
         </div>
       )}
 
