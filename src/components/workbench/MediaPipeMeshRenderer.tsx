@@ -14,6 +14,17 @@ export interface MeshMeasurement {
   distancePx: number;
 }
 
+export interface MeshAngleMeasurement {
+  id: string;
+  point1Id: number;
+  point2Id: number; // vertex
+  point3Id: number;
+  point1: { x: number; y: number };
+  point2: { x: number; y: number }; // vertex
+  point3: { x: number; y: number };
+  angleDegrees: number;
+}
+
 interface MediaPipeMeshRendererProps {
   canvas: fabric.Canvas | null;
   meshData: MediaPipeMeshData | null;
@@ -84,7 +95,7 @@ export const MediaPipeMeshRenderer = ({
   const [tooltip, setTooltip] = useState<{ x: number; y: number; id: number } | null>(null);
 
   const style = MESH_STYLES[visualStyle];
-  const isMeasureMode = activeTool === 'measure';
+  const isInteractiveMode = activeTool === 'measure' || activeTool === 'angle';
 
   const clearMesh = useCallback(() => {
     if (!canvas) return;
@@ -147,9 +158,10 @@ export const MediaPipeMeshRenderer = ({
     });
 
     // Desenhar os pontos (por cima das linhas)
-    // Em modo measure, pontos são maiores e clicáveis
-    const pointRadius = isMeasureMode ? style.pointRadiusMeasure : style.pointRadius;
-    const pointColor = isMeasureMode ? style.pointColorMeasure : style.pointColor;
+    // Em modo measure/angle, pontos são maiores e clicáveis
+    const pointRadius = isInteractiveMode ? style.pointRadiusMeasure : style.pointRadius;
+    const pointColor = isInteractiveMode ? style.pointColorMeasure : style.pointColor;
+    const interactiveStroke = activeTool === 'angle' ? '#f97316' : '#06b6d4';
     
     points.forEach(point => {
       const coords = pointsMap.get(point.id);
@@ -158,16 +170,16 @@ export const MediaPipeMeshRenderer = ({
       const circle = new fabric.Circle({
         radius: pointRadius,
         fill: pointColor,
-        stroke: isMeasureMode ? '#06b6d4' : style.pointStroke,
-        strokeWidth: isMeasureMode ? 1 : style.pointStrokeWidth,
+        stroke: isInteractiveMode ? interactiveStroke : style.pointStroke,
+        strokeWidth: isInteractiveMode ? 1 : style.pointStrokeWidth,
         left: coords.x - pointRadius,
         top: coords.y - pointRadius,
         selectable: false,
         hasControls: false,
         hasBorders: false,
         opacity: opacity / 100,
-        hoverCursor: isMeasureMode ? 'pointer' : 'default',
-        evented: isMeasureMode, // Enable events in measure mode
+        hoverCursor: isInteractiveMode ? 'pointer' : 'default',
+        evented: isInteractiveMode, // Enable events in measure/angle mode
       });
 
       (circle as any).customName = `mediapipe_point_${point.id}`;
@@ -179,7 +191,7 @@ export const MediaPipeMeshRenderer = ({
     });
 
     canvas.renderAll();
-  }, [canvas, meshData, visible, opacity, density, visualStyle, style, imageWidth, imageHeight, imageLeft, imageTop, clearMesh, isMeasureMode]);
+  }, [canvas, meshData, visible, opacity, density, visualStyle, style, imageWidth, imageHeight, imageLeft, imageTop, clearMesh, isInteractiveMode, activeTool]);
 
   useEffect(() => {
     drawMesh();
@@ -210,7 +222,7 @@ export const MediaPipeMeshRenderer = ({
 
     const handleMouseDown = (e: any) => {
       const target = e.target;
-      if (isMeasureMode && target && typeof (target as any).pointId === 'number') {
+      if (isInteractiveMode && target && typeof (target as any).pointId === 'number') {
         const pointId = (target as any).pointId;
         const coords = (target as any).pointCoords;
         if (coords && onMeshPointClick) {
@@ -228,7 +240,7 @@ export const MediaPipeMeshRenderer = ({
       canvas.off('mouse:out', handleMouseOut);
       canvas.off('mouse:down', handleMouseDown);
     };
-  }, [canvas, isMeasureMode, onMeshPointClick]);
+  }, [canvas, isInteractiveMode, onMeshPointClick]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -25,6 +25,7 @@ const TOOL_LABELS: Record<ToolType, string> = {
   annotate: 'Anotar',
   eraser: 'Borracha',
   measure: 'Medir',
+  angle: 'Ângulo',
 };
 
 export function CanvasStatusBar({

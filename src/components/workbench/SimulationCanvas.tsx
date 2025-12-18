@@ -16,7 +16,7 @@ import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-import { type MeshVisualStyle, type MeshMeasurement } from './MediaPipeMeshRenderer';
+import { type MeshVisualStyle, type MeshMeasurement, type MeshAngleMeasurement } from './MediaPipeMeshRenderer';
 
 interface SimulationCanvasProps {
   imageUrl: string;
@@ -58,6 +58,7 @@ const TOOL_COLORS: Record<ToolType, string> = {
   annotate: '#0ea5e9',
   eraser: '#64748b',
   measure: '#06b6d4',
+  angle: '#f97316',
 };
 
 const TOOL_CURSORS: Record<ToolType, string> = {
@@ -69,6 +70,7 @@ const TOOL_CURSORS: Record<ToolType, string> = {
   annotate: 'text',
   eraser: 'not-allowed',
   measure: 'crosshair',
+  angle: 'crosshair',
 };
 
 // Helper to create suture points along a path
@@ -203,6 +205,10 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     // For mesh landmark measurements
     const [meshMeasureStart, setMeshMeasureStart] = useState<{ pointId: number; x: number; y: number } | null>(null);
     const [meshMeasurements, setMeshMeasurements] = useState<MeshMeasurement[]>([]);
+    
+    // For mesh angle measurements (3 points)
+    const [anglePoints, setAnglePoints] = useState<{ pointId: number; x: number; y: number }[]>([]);
+    const [angleMeasurements, setAngleMeasurements] = useState<MeshAngleMeasurement[]>([]);
     
     const {
       zoom,
@@ -650,48 +656,95 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       };
     }, [activeTool, toolParams, addObject, onObjectAdded, isPanMode, isCalibrating, calibrationStep, setPoint1, setPoint2, measureStart, isCalibrated, pixelsPerMm]);
 
-    // Clear measure start when switching away from measure tool
+    // Clear measure/angle state when switching tools
     useEffect(() => {
       if (activeTool !== 'measure') {
         setMeasureStart(null);
         setMeshMeasureStart(null);
       }
+      if (activeTool !== 'angle') {
+        setAnglePoints([]);
+      }
     }, [activeTool]);
 
     // Handler for mesh point clicks in measure mode
     const handleMeshPointClick = useCallback((pointId: number, canvasX: number, canvasY: number) => {
-      if (activeTool !== 'measure') return;
-      
-      if (!meshMeasureStart) {
-        // First point
-        setMeshMeasureStart({ pointId, x: canvasX, y: canvasY });
-        toast.info(`Ponto #${pointId} selecionado. Clique em outro ponto para medir.`);
-      } else {
-        // Second point - calculate and save measurement
-        const dx = canvasX - meshMeasureStart.x;
-        const dy = canvasY - meshMeasureStart.y;
-        const distancePx = Math.sqrt(dx * dx + dy * dy);
-        
-        const newMeasurement: MeshMeasurement = {
-          id: `mesh_measure_${Date.now()}`,
-          point1Id: meshMeasureStart.pointId,
-          point2Id: pointId,
-          point1: { x: meshMeasureStart.x, y: meshMeasureStart.y },
-          point2: { x: canvasX, y: canvasY },
-          distancePx,
-        };
-        
-        setMeshMeasurements(prev => [...prev, newMeasurement]);
-        setMeshMeasureStart(null);
-        
-        if (isCalibrated && pixelsPerMm) {
-          const mmDistance = distancePx / pixelsPerMm;
-          toast.success(`#${meshMeasureStart.pointId} → #${pointId}: ${mmDistance.toFixed(2)} mm`);
+      // Distance measurement
+      if (activeTool === 'measure') {
+        if (!meshMeasureStart) {
+          setMeshMeasureStart({ pointId, x: canvasX, y: canvasY });
+          toast.info(`Ponto #${pointId} selecionado. Clique em outro ponto para medir.`);
         } else {
-          toast.success(`#${meshMeasureStart.pointId} → #${pointId}: ${distancePx.toFixed(1)} px`);
+          const dx = canvasX - meshMeasureStart.x;
+          const dy = canvasY - meshMeasureStart.y;
+          const distancePx = Math.sqrt(dx * dx + dy * dy);
+          
+          const newMeasurement: MeshMeasurement = {
+            id: `mesh_measure_${Date.now()}`,
+            point1Id: meshMeasureStart.pointId,
+            point2Id: pointId,
+            point1: { x: meshMeasureStart.x, y: meshMeasureStart.y },
+            point2: { x: canvasX, y: canvasY },
+            distancePx,
+          };
+          
+          setMeshMeasurements(prev => [...prev, newMeasurement]);
+          setMeshMeasureStart(null);
+          
+          if (isCalibrated && pixelsPerMm) {
+            const mmDistance = distancePx / pixelsPerMm;
+            toast.success(`#${meshMeasureStart.pointId} → #${pointId}: ${mmDistance.toFixed(2)} mm`);
+          } else {
+            toast.success(`#${meshMeasureStart.pointId} → #${pointId}: ${distancePx.toFixed(1)} px`);
+          }
         }
+        return;
       }
-    }, [activeTool, meshMeasureStart, isCalibrated, pixelsPerMm]);
+      
+      // Angle measurement (3 points)
+      if (activeTool === 'angle') {
+        const newPoints = [...anglePoints, { pointId, x: canvasX, y: canvasY }];
+        
+        if (newPoints.length < 3) {
+          setAnglePoints(newPoints);
+          const remaining = 3 - newPoints.length;
+          toast.info(`Ponto #${pointId} selecionado. Selecione mais ${remaining} ponto${remaining > 1 ? 's' : ''}.`);
+        } else {
+          // Calculate angle with point2 as vertex
+          const [p1, p2, p3] = newPoints; // p2 is the vertex
+          
+          // Vectors from vertex to other points
+          const v1 = { x: p1.x - p2.x, y: p1.y - p2.y };
+          const v2 = { x: p3.x - p2.x, y: p3.y - p2.y };
+          
+          // Dot product and magnitudes
+          const dot = v1.x * v2.x + v1.y * v2.y;
+          const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+          const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+          
+          // Angle in degrees
+          const cosAngle = dot / (mag1 * mag2);
+          const angleDegrees = Math.acos(Math.max(-1, Math.min(1, cosAngle))) * (180 / Math.PI);
+          
+          const newAngle: MeshAngleMeasurement = {
+            id: `angle_measure_${Date.now()}`,
+            point1Id: p1.pointId,
+            point2Id: p2.pointId, // vertex
+            point3Id: p3.pointId,
+            point1: { x: p1.x, y: p1.y },
+            point2: { x: p2.x, y: p2.y }, // vertex
+            point3: { x: p3.x, y: p3.y },
+            angleDegrees,
+          };
+          
+          setAngleMeasurements(prev => [...prev, newAngle]);
+          setAnglePoints([]);
+          
+          toast.success(`Ângulo #${p1.pointId}-#${p2.pointId}-#${p3.pointId}: ${angleDegrees.toFixed(1)}°`);
+        }
+        return;
+      }
+    }, [activeTool, meshMeasureStart, anglePoints, isCalibrated, pixelsPerMm]);
 
     // Keyboard listener for measurements
     useEffect(() => {
@@ -705,6 +758,10 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             setMeshMeasureStart(null);
             toast.info('Medição de landmark cancelada');
           }
+          if (anglePoints.length > 0) {
+            setAnglePoints([]);
+            toast.info('Medição de ângulo cancelada');
+          }
         }
         if (e.key === 'Delete' || e.key === 'Backspace') {
           if (activeTool === 'measure') {
@@ -716,12 +773,18 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
               toast.info('Última medição removida');
             }
           }
+          if (activeTool === 'angle') {
+            if (angleMeasurements.length > 0) {
+              setAngleMeasurements(prev => prev.slice(0, -1));
+              toast.info('Última medição de ângulo removida');
+            }
+          }
         }
       };
       
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [measureStart, meshMeasureStart, activeTool, measurements.length, meshMeasurements.length]);
+    }, [measureStart, meshMeasureStart, anglePoints, activeTool, measurements.length, meshMeasurements.length, angleMeasurements.length]);
 
     // Pan handling
     useEffect(() => {
@@ -1175,6 +1238,160 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
                       </text>
                     </>
                   );
+                })()}
+              </g>
+            )}
+          </svg>
+        )}
+
+        {/* Angle Measurements Overlay */}
+        {(angleMeasurements.length > 0 || anglePoints.length > 0) && (
+          <svg
+            className="absolute inset-0 pointer-events-none z-30"
+            style={{ width: '100%', height: '100%' }}
+          >
+            {/* Completed angle measurements */}
+            {angleMeasurements.map(m => {
+              const panX = fabricRef.current?.viewportTransform?.[4] || 0;
+              const panY = fabricRef.current?.viewportTransform?.[5] || 0;
+              const p1Screen = { x: m.point1.x * zoom + panX, y: m.point1.y * zoom + panY };
+              const p2Screen = { x: m.point2.x * zoom + panX, y: m.point2.y * zoom + panY }; // vertex
+              const p3Screen = { x: m.point3.x * zoom + panX, y: m.point3.y * zoom + panY };
+              
+              // Calculate arc path for angle visualization
+              const arcRadius = 25;
+              const angle1 = Math.atan2(p1Screen.y - p2Screen.y, p1Screen.x - p2Screen.x);
+              const angle3 = Math.atan2(p3Screen.y - p2Screen.y, p3Screen.x - p2Screen.x);
+              const startAngle = Math.min(angle1, angle3);
+              const endAngle = Math.max(angle1, angle3);
+              const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+              
+              const arcStart = {
+                x: p2Screen.x + arcRadius * Math.cos(startAngle),
+                y: p2Screen.y + arcRadius * Math.sin(startAngle)
+              };
+              const arcEnd = {
+                x: p2Screen.x + arcRadius * Math.cos(endAngle),
+                y: p2Screen.y + arcRadius * Math.sin(endAngle)
+              };
+              
+              // Label position (midpoint of arc)
+              const midAngle = (startAngle + endAngle) / 2;
+              const labelRadius = arcRadius + 18;
+              const labelPos = {
+                x: p2Screen.x + labelRadius * Math.cos(midAngle),
+                y: p2Screen.y + labelRadius * Math.sin(midAngle)
+              };
+              
+              return (
+                <g key={m.id}>
+                  {/* Lines from vertex to points */}
+                  <line
+                    x1={p2Screen.x}
+                    y1={p2Screen.y}
+                    x2={p1Screen.x}
+                    y2={p1Screen.y}
+                    stroke="#f97316"
+                    strokeWidth={2}
+                    strokeDasharray="4 2"
+                  />
+                  <line
+                    x1={p2Screen.x}
+                    y1={p2Screen.y}
+                    x2={p3Screen.x}
+                    y2={p3Screen.y}
+                    stroke="#f97316"
+                    strokeWidth={2}
+                    strokeDasharray="4 2"
+                  />
+                  {/* Arc */}
+                  <path
+                    d={`M ${arcStart.x} ${arcStart.y} A ${arcRadius} ${arcRadius} 0 ${largeArc} 1 ${arcEnd.x} ${arcEnd.y}`}
+                    fill="none"
+                    stroke="#f97316"
+                    strokeWidth={2}
+                  />
+                  {/* Points */}
+                  <circle cx={p1Screen.x} cy={p1Screen.y} r={6} fill="#f97316" stroke="#fff" strokeWidth={1} />
+                  <circle cx={p2Screen.x} cy={p2Screen.y} r={8} fill="#f97316" stroke="#fff" strokeWidth={2} />
+                  <circle cx={p3Screen.x} cy={p3Screen.y} r={6} fill="#f97316" stroke="#fff" strokeWidth={1} />
+                  {/* Point IDs */}
+                  <text x={p1Screen.x} y={p1Screen.y - 10} textAnchor="middle" className="fill-foreground text-[10px] font-mono">
+                    #{m.point1Id}
+                  </text>
+                  <text x={p2Screen.x} y={p2Screen.y - 12} textAnchor="middle" className="fill-foreground text-[10px] font-mono font-bold">
+                    #{m.point2Id}
+                  </text>
+                  <text x={p3Screen.x} y={p3Screen.y - 10} textAnchor="middle" className="fill-foreground text-[10px] font-mono">
+                    #{m.point3Id}
+                  </text>
+                  {/* Angle value */}
+                  <rect
+                    x={labelPos.x - 25}
+                    y={labelPos.y - 10}
+                    width={50}
+                    height={20}
+                    rx={4}
+                    fill="hsl(var(--background))"
+                    stroke="#f97316"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={labelPos.x}
+                    y={labelPos.y + 5}
+                    textAnchor="middle"
+                    className="fill-foreground text-xs font-mono font-medium"
+                  >
+                    {m.angleDegrees.toFixed(1)}°
+                  </text>
+                </g>
+              );
+            })}
+            
+            {/* Active angle measurement in progress */}
+            {anglePoints.length > 0 && activeTool === 'angle' && (
+              <g>
+                {(() => {
+                  const panX = fabricRef.current?.viewportTransform?.[4] || 0;
+                  const panY = fabricRef.current?.viewportTransform?.[5] || 0;
+                  
+                  return anglePoints.map((pt, idx) => {
+                    const screen = { x: pt.x * zoom + panX, y: pt.y * zoom + panY };
+                    const isVertex = idx === 1 && anglePoints.length === 2;
+                    
+                    return (
+                      <g key={`angle_point_${idx}`}>
+                        <circle 
+                          cx={screen.x} 
+                          cy={screen.y} 
+                          r={isVertex ? 8 : 6} 
+                          fill="#f97316" 
+                          stroke="#fff" 
+                          strokeWidth={isVertex ? 2 : 1} 
+                        />
+                        <text 
+                          x={screen.x} 
+                          y={screen.y - 10} 
+                          textAnchor="middle" 
+                          className="fill-foreground text-[10px] font-mono font-bold"
+                        >
+                          #{pt.pointId} {idx === 1 ? '(vértice)' : ''}
+                        </text>
+                        {idx > 0 && (
+                          <line
+                            x1={anglePoints[idx - 1].x * zoom + panX}
+                            y1={anglePoints[idx - 1].y * zoom + panY}
+                            x2={screen.x}
+                            y2={screen.y}
+                            stroke="#f97316"
+                            strokeWidth={2}
+                            strokeDasharray="4 2"
+                            opacity={0.7}
+                          />
+                        )}
+                      </g>
+                    );
+                  });
                 })()}
               </g>
             )}
