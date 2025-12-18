@@ -5,9 +5,11 @@ import { ToolType } from './ToolPanel';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasStatusBar } from './CanvasStatusBar';
 import { CanvasRuler } from './CanvasRuler';
+import { CalibrationOverlay } from './CalibrationOverlay';
 import { FacialMesh } from './FacialMesh';
 import { MediaPipeMeshRenderer } from './MediaPipeMeshRenderer';
 import { useCanvasState, Point, CanvasObject } from '@/hooks/useCanvasState';
+import { useCalibration } from '@/hooks/useCalibration';
 import { FacialMeshData } from '@/types/facialLandmarks';
 import { MediaPipeMeshData } from '@/types/mediapipeMesh';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
@@ -212,6 +214,17 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       undo: stateUndo,
       redo: stateRedo,
     } = useCanvasState();
+
+    // Calibration state
+    const {
+      isCalibrating,
+      calibrationStep,
+      isCalibrated,
+      pixelsPerMm,
+      setPoint1,
+      setPoint2,
+      startCalibration,
+    } = useCalibration();
 
     // Initialize Fabric.js canvas
     useEffect(() => {
@@ -467,9 +480,20 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
 
       // Handle mouse events for other tools
       const handleMouseDown = (e: any) => {
-        if (isPanMode) return;
-        
         const pointer = canvas.getPointer(e.e);
+        
+        // Handle calibration clicks
+        if (isCalibrating) {
+          if (calibrationStep === 'point1') {
+            setPoint1({ x: pointer.x, y: pointer.y });
+            toast.info('Primeiro ponto marcado. Clique no segundo ponto.');
+          } else if (calibrationStep === 'point2') {
+            setPoint2({ x: pointer.x, y: pointer.y });
+          }
+          return;
+        }
+        
+        if (isPanMode) return;
         
         if (activeTool === 'eraser') {
           const target = canvas.findTarget(e.e);
@@ -587,7 +611,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         canvas.off('mouse:over', handleMouseOver);
         canvas.off('mouse:out', handleMouseOut);
       };
-    }, [activeTool, toolParams, addObject, onObjectAdded, isPanMode]);
+    }, [activeTool, toolParams, addObject, onObjectAdded, isPanMode, isCalibrating, calibrationStep, setPoint1, setPoint2]);
 
     // Pan handling
     useEffect(() => {
@@ -773,6 +797,18 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           panY={fabricRef.current?.viewportTransform?.[5] || 0}
           containerWidth={containerRef.current?.clientWidth || 0}
           containerHeight={containerRef.current?.clientHeight || 0}
+          isCalibrated={isCalibrated}
+          pixelsPerMm={pixelsPerMm}
+          onCalibrate={startCalibration}
+        />
+
+        {/* Calibration Overlay */}
+        <CalibrationOverlay
+          containerWidth={containerRef.current?.clientWidth || 0}
+          containerHeight={containerRef.current?.clientHeight || 0}
+          zoom={zoom}
+          panX={fabricRef.current?.viewportTransform?.[4] || 0}
+          panY={fabricRef.current?.viewportTransform?.[5] || 0}
         />
 
         {/* Cursor Size Preview */}

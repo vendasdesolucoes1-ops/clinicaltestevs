@@ -9,12 +9,12 @@ interface CanvasRulerProps {
   panY: number;
   containerWidth: number;
   containerHeight: number;
+  isCalibrated?: boolean;
+  pixelsPerMm?: number | null;
+  onCalibrate?: () => void;
 }
 
 const RULER_SIZE = 24;
-const MAJOR_TICK_INTERVAL = 100; // pixels in original scale
-const MINOR_TICK_INTERVAL = 50;
-const SMALL_TICK_INTERVAL = 10;
 
 export function CanvasRuler({
   visible,
@@ -23,65 +23,103 @@ export function CanvasRuler({
   panY,
   containerWidth,
   containerHeight,
+  isCalibrated = false,
+  pixelsPerMm = null,
+  onCalibrate,
 }: CanvasRulerProps) {
+  // Determine tick intervals based on calibration
+  const { majorInterval, minorInterval, smallInterval, unit } = useMemo(() => {
+    if (isCalibrated && pixelsPerMm) {
+      // Use mm-based intervals when calibrated
+      // 10mm major, 5mm minor, 1mm small
+      return {
+        majorInterval: 10 * pixelsPerMm,
+        minorInterval: 5 * pixelsPerMm,
+        smallInterval: 1 * pixelsPerMm,
+        unit: 'mm',
+      };
+    }
+    // Default pixel intervals
+    return {
+      majorInterval: 100,
+      minorInterval: 50,
+      smallInterval: 10,
+      unit: 'px',
+    };
+  }, [isCalibrated, pixelsPerMm]);
+
   // Generate horizontal ruler marks
   const horizontalMarks = useMemo(() => {
     if (!visible || containerWidth <= 0) return [];
     
     const marks: { x: number; label: string | null; height: number }[] = [];
-    const step = SMALL_TICK_INTERVAL * zoom;
+    const step = smallInterval * zoom;
     
-    // Calculate the starting point considering pan
-    const startOffset = panX % (MAJOR_TICK_INTERVAL * zoom);
-    const startValue = Math.floor(-panX / zoom / SMALL_TICK_INTERVAL) * SMALL_TICK_INTERVAL;
+    // Skip if step is too small
+    if (step < 3) return [];
+    
+    const startOffset = panX % (majorInterval * zoom);
+    const startValue = Math.floor(-panX / zoom / smallInterval) * smallInterval;
     
     for (let i = 0; i < containerWidth / step + 2; i++) {
       const x = startOffset + i * step;
-      const value = startValue + i * SMALL_TICK_INTERVAL;
+      const value = startValue + i * smallInterval;
       
       if (x < RULER_SIZE || x > containerWidth) continue;
       
-      const isMajor = value % MAJOR_TICK_INTERVAL === 0;
-      const isMinor = value % MINOR_TICK_INTERVAL === 0;
+      // Check for major/minor ticks with small tolerance for float comparison
+      const isMajor = Math.abs(value % majorInterval) < 0.01;
+      const isMinor = Math.abs(value % minorInterval) < 0.01;
+      
+      // Convert pixel value to display value
+      const displayValue = isCalibrated && pixelsPerMm 
+        ? value / pixelsPerMm 
+        : value;
       
       marks.push({
         x,
-        label: isMajor ? String(value) : null,
+        label: isMajor ? displayValue.toFixed(isCalibrated ? 0 : 0) : null,
         height: isMajor ? 12 : isMinor ? 8 : 4,
       });
     }
     
     return marks;
-  }, [visible, zoom, panX, containerWidth]);
+  }, [visible, zoom, panX, containerWidth, majorInterval, minorInterval, smallInterval, isCalibrated, pixelsPerMm]);
 
   // Generate vertical ruler marks
   const verticalMarks = useMemo(() => {
     if (!visible || containerHeight <= 0) return [];
     
     const marks: { y: number; label: string | null; width: number }[] = [];
-    const step = SMALL_TICK_INTERVAL * zoom;
+    const step = smallInterval * zoom;
     
-    const startOffset = panY % (MAJOR_TICK_INTERVAL * zoom);
-    const startValue = Math.floor(-panY / zoom / SMALL_TICK_INTERVAL) * SMALL_TICK_INTERVAL;
+    if (step < 3) return [];
+    
+    const startOffset = panY % (majorInterval * zoom);
+    const startValue = Math.floor(-panY / zoom / smallInterval) * smallInterval;
     
     for (let i = 0; i < containerHeight / step + 2; i++) {
       const y = startOffset + i * step;
-      const value = startValue + i * SMALL_TICK_INTERVAL;
+      const value = startValue + i * smallInterval;
       
       if (y < RULER_SIZE || y > containerHeight) continue;
       
-      const isMajor = value % MAJOR_TICK_INTERVAL === 0;
-      const isMinor = value % MINOR_TICK_INTERVAL === 0;
+      const isMajor = Math.abs(value % majorInterval) < 0.01;
+      const isMinor = Math.abs(value % minorInterval) < 0.01;
+      
+      const displayValue = isCalibrated && pixelsPerMm 
+        ? value / pixelsPerMm 
+        : value;
       
       marks.push({
         y,
-        label: isMajor ? String(value) : null,
+        label: isMajor ? displayValue.toFixed(isCalibrated ? 0 : 0) : null,
         width: isMajor ? 12 : isMinor ? 8 : 4,
       });
     }
     
     return marks;
-  }, [visible, zoom, panY, containerHeight]);
+  }, [visible, zoom, panY, containerHeight, majorInterval, minorInterval, smallInterval, isCalibrated, pixelsPerMm]);
 
   if (!visible) return null;
 
@@ -153,11 +191,22 @@ export function CanvasRuler({
         </svg>
       </div>
 
-      {/* Corner square */}
+      {/* Corner square - clickable for calibration */}
       <div 
-        className="absolute top-0 left-0 w-6 h-6 bg-muted/90 backdrop-blur-sm border-r border-b border-border z-30 pointer-events-none flex items-center justify-center"
+        className={cn(
+          "absolute top-0 left-0 w-6 h-6 bg-muted/90 backdrop-blur-sm border-r border-b border-border z-30 flex items-center justify-center transition-colors",
+          onCalibrate && "cursor-pointer hover:bg-primary/20 pointer-events-auto",
+          isCalibrated && "text-emerald-500"
+        )}
+        onClick={onCalibrate}
+        title={isCalibrated ? `Calibrado: ${pixelsPerMm?.toFixed(2)} px/mm` : 'Clique para calibrar'}
       >
-        <span className="text-[8px] text-muted-foreground font-mono">px</span>
+        <span className={cn(
+          "text-[8px] font-mono font-medium",
+          isCalibrated ? "text-emerald-500" : "text-muted-foreground"
+        )}>
+          {unit}
+        </span>
       </div>
     </>
   );
