@@ -35,6 +35,7 @@ import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockD
 import { toast } from 'sonner';
 import { MEDIAPIPE_FACE_TESSELLATION } from '@/types/mediapipeTessellation';
 import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
+import { isLandmarkVisible } from '@/types/mediapipeMeshPresets';
 import type { Landmark3D, TriangleFace } from '@/types/faceMesh3D';
 
 type ViewMode = '2d' | '3d' | 'compare';
@@ -144,6 +145,14 @@ export default function Workbench() {
 
   // Calcular análise de simetria
   const symmetryResult = useSymmetryAnalysis(meshData);
+
+  // Calculate active points count based on density preset
+  const activePointsCount = useMemo(() => {
+    if (!mediaPipeMeshData?.points || mediaPipeMeshData.points.length === 0) return 0;
+    return mediaPipeMeshData.points.filter(point => 
+      isLandmarkVisible(point.id, meshDensity)
+    ).length;
+  }, [mediaPipeMeshData, meshDensity]);
 
   // Convert MediaPipe mesh to 3D landmarks and faces for FaceMesh3D
   const mesh3DData = useMemo(() => {
@@ -943,6 +952,7 @@ export default function Workbench() {
             currentPhotoAngle={caseData?.photos.find((p) => p.url === currentImageUrl)?.angle}
             onTriggerMeshAI={handleTriggerMeshAI}
             isMeshAILoading={isMeshAILoading}
+            activePointsCount={activePointsCount}
           />
         </div>
       </CollapsiblePanel>
