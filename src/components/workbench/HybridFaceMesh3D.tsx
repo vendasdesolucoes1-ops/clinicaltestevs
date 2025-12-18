@@ -1,10 +1,19 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Canvas, useLoader, useThree } from '@react-three/fiber';
+import React, { useMemo, useRef, useState } from 'react';
+import { Canvas, useLoader } from '@react-three/fiber';
 import { OrbitControls, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
-import { RotateCcw, ZoomIn, ZoomOut, Grid3X3, Layers } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { Label } from '@/components/ui/label';
+import { RotateCcw, ZoomIn, ZoomOut, Grid3X3, Layers, Settings2 } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import type { Landmark3D } from '@/types/faceMesh3D';
+
+interface DeformationParams {
+  intensity: number;       // 0-1: overall deformation strength
+  influenceRadius: number; // 0-1: how far each landmark affects vertices
+  depthScale: number;      // 0-1: Z-axis deformation scale
+}
 
 interface HybridFaceMesh3DProps {
   landmarks: Landmark3D[];
@@ -58,7 +67,8 @@ const DeformedGLTFMesh: React.FC<{
   imageUrl?: string;
   wireframe: boolean;
   opacity: number;
-}> = ({ landmarks, imageUrl, wireframe, opacity }) => {
+  deformParams: DeformationParams;
+}> = ({ landmarks, imageUrl, wireframe, opacity, deformParams }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const { scene } = useGLTF('/models/LeePerrySmith.glb');
   
@@ -76,7 +86,7 @@ const DeformedGLTFMesh: React.FC<{
     return geometry;
   }, [scene]);
 
-  // Create deformed geometry based on landmarks
+  // Create deformed geometry based on landmarks and deformation parameters
   const deformedGeometry = useMemo(() => {
     if (!originalGeometry || landmarks.length === 0) return originalGeometry;
     
@@ -89,8 +99,6 @@ const DeformedGLTFMesh: React.FC<{
     const bbox = geo.boundingBox!;
     const size = new THREE.Vector3();
     bbox.getSize(size);
-    const center = new THREE.Vector3();
-    bbox.getCenter(center);
     
     // Calculate landmark bounds for mapping
     let minX = Infinity, maxX = -Infinity;
@@ -123,6 +131,13 @@ const DeformedGLTFMesh: React.FC<{
       .filter(idx => idx < landmarks.length)
       .map(idx => landmarks[idx]);
     
+    // Deformation parameters from props
+    const { intensity, influenceRadius, depthScale } = deformParams;
+    
+    // Convert influenceRadius to falloff factor (higher = tighter influence)
+    // influenceRadius 0 = very tight (factor 20), influenceRadius 1 = very wide (factor 2)
+    const falloffFactor = 2 + (1 - influenceRadius) * 18;
+    
     // Apply deformation to each vertex
     for (let i = 0; i < posArray.length; i += 3) {
       const vx = posArray[i];
@@ -132,7 +147,6 @@ const DeformedGLTFMesh: React.FC<{
       // Normalize vertex position to 0-1 range
       const nx = (vx - bbox.min.x) / size.x;
       const ny = (vy - bbox.min.y) / size.y;
-      const nz = (vz - bbox.min.z) / (size.z || 1);
       
       // Find closest landmarks and interpolate displacement
       let totalWeight = 0;
@@ -149,18 +163,20 @@ const DeformedGLTFMesh: React.FC<{
         const dy = ny - (1 - lny); // Flip Y for landmark space
         const dist = Math.sqrt(dx * dx + dy * dy);
         
-        // Weight based on distance (inverse square with falloff)
-        const weight = Math.exp(-dist * dist * 8);
+        // Weight based on distance with configurable falloff
+        const weight = Math.exp(-dist * dist * falloffFactor);
         
         if (weight > 0.001) {
-          // Calculate displacement from original to landmark position
+          // Calculate displacement with intensity scaling
           const targetX = (lnx - 0.5) * size.x * 1.2;
           const targetY = (lny - 0.5) * size.y * 1.2;
-          const targetZ = (lnz - 0.5) * (size.z || 0.5) * 0.5;
+          const targetZ = (lnz - 0.5) * (size.z || 0.5) * depthScale;
           
-          dispX += (targetX - vx) * weight * 0.15;
-          dispY += (targetY - vy) * weight * 0.15;
-          dispZ += (targetZ - vz) * weight * 0.1;
+          // Apply intensity to displacement
+          const intensityFactor = intensity * 0.3; // Max 30% displacement
+          dispX += (targetX - vx) * weight * intensityFactor;
+          dispY += (targetY - vy) * weight * intensityFactor;
+          dispZ += (targetZ - vz) * weight * intensityFactor * 0.5;
           totalWeight += weight;
         }
       });
@@ -191,7 +207,7 @@ const DeformedGLTFMesh: React.FC<{
     }
     
     return geo;
-  }, [originalGeometry, landmarks]);
+  }, [originalGeometry, landmarks, deformParams]);
 
   // Create UV mapping for photo projection
   const projectedGeometry = useMemo(() => {
@@ -279,7 +295,14 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
   const controlsRef = useRef<any>(null);
   const [showWireframe, setShowWireframe] = useState(wireframe);
   const [showOverlay, setShowOverlay] = useState(false);
-
+  const [showParams, setShowParams] = useState(false);
+  
+  // Deformation parameters with defaults
+  const [deformParams, setDeformParams] = useState<DeformationParams>({
+    intensity: 0.5,
+    influenceRadius: 0.5,
+    depthScale: 0.5,
+  });
   const handleReset = () => {
     if (controlsRef.current) {
       controlsRef.current.reset();
@@ -309,6 +332,15 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
     <div className="relative w-full h-full min-h-[400px] bg-muted/30 rounded-lg overflow-hidden">
       {/* Toolbar */}
       <div className="absolute top-3 right-3 z-10 flex gap-1">
+        <Button
+          variant={showParams ? "secondary" : "outline"}
+          size="icon"
+          className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+          onClick={() => setShowParams(!showParams)}
+          title="Parâmetros de Deformação"
+        >
+          <Settings2 className="h-4 w-4" />
+        </Button>
         {canShowTexture && (
           <Button
             variant={showWireframe ? "outline" : "secondary"}
@@ -357,6 +389,74 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
           <RotateCcw className="h-4 w-4" />
         </Button>
       </div>
+
+      {/* Deformation Parameters Panel */}
+      <Collapsible open={showParams} onOpenChange={setShowParams}>
+        <CollapsibleContent className="absolute top-14 right-3 z-10 w-64 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg p-3 space-y-4">
+          <div className="text-xs font-semibold text-foreground border-b pb-2">
+            Parâmetros de Deformação
+          </div>
+          
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs">Intensidade</Label>
+                <span className="text-xs text-muted-foreground">{Math.round(deformParams.intensity * 100)}%</span>
+              </div>
+              <Slider
+                value={[deformParams.intensity * 100]}
+                onValueChange={([v]) => setDeformParams(p => ({ ...p, intensity: v / 100 }))}
+                min={0}
+                max={100}
+                step={5}
+                className="h-2"
+              />
+              <p className="text-[10px] text-muted-foreground">Força da deformação aplicada aos vértices</p>
+            </div>
+            
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs">Raio de Influência</Label>
+                <span className="text-xs text-muted-foreground">{Math.round(deformParams.influenceRadius * 100)}%</span>
+              </div>
+              <Slider
+                value={[deformParams.influenceRadius * 100]}
+                onValueChange={([v]) => setDeformParams(p => ({ ...p, influenceRadius: v / 100 }))}
+                min={0}
+                max={100}
+                step={5}
+                className="h-2"
+              />
+              <p className="text-[10px] text-muted-foreground">Área afetada por cada landmark</p>
+            </div>
+            
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs">Escala de Profundidade</Label>
+                <span className="text-xs text-muted-foreground">{Math.round(deformParams.depthScale * 100)}%</span>
+              </div>
+              <Slider
+                value={[deformParams.depthScale * 100]}
+                onValueChange={([v]) => setDeformParams(p => ({ ...p, depthScale: v / 100 }))}
+                min={0}
+                max={100}
+                step={5}
+                className="h-2"
+              />
+              <p className="text-[10px] text-muted-foreground">Intensidade da deformação no eixo Z</p>
+            </div>
+          </div>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full text-xs"
+            onClick={() => setDeformParams({ intensity: 0.5, influenceRadius: 0.5, depthScale: 0.5 })}
+          >
+            Restaurar Padrões
+          </Button>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Mode indicator */}
       {hasData && (
@@ -415,6 +515,7 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
               imageUrl={canShowTexture ? imageUrl : undefined}
               wireframe={showWireframe}
               opacity={opacity}
+              deformParams={deformParams}
             />
             
             {/* Overlay wireframe when enabled */}
@@ -424,6 +525,7 @@ const HybridFaceMesh3D: React.FC<HybridFaceMesh3DProps> = ({
                 imageUrl={undefined}
                 wireframe={true}
                 opacity={0.3}
+                deformParams={deformParams}
               />
             )}
           </React.Suspense>
