@@ -68,7 +68,7 @@ const TOOL_CURSORS: Record<ToolType, string> = {
   incision: 'crosshair',
   suture: 'crosshair',
   annotate: 'text',
-  eraser: 'not-allowed',
+  eraser: 'pointer',
   measure: 'crosshair',
   angle: 'crosshair',
 };
@@ -517,6 +517,8 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             canvas.remove(target);
             canvas.renderAll();
             toast.success('Objeto removido');
+          } else {
+            toast.info('Clique sobre uma marcação para apagar');
           }
         } else if (activeTool === 'volume') {
           const volumeIndicator = createVolumeIndicator(
