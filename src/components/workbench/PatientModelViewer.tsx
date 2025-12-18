@@ -1,13 +1,23 @@
-import React, { useRef, Suspense, useState, useEffect } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { useRef, Suspense, useState, useEffect, useMemo, useCallback } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Center, Environment } from '@react-three/drei';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
-import { RotateCcw, ZoomIn, ZoomOut, Grid3X3, Layers, Box, Loader2 } from 'lucide-react';
+import { RotateCcw, ZoomIn, ZoomOut, Grid3X3, Layers, Box, Loader2, Crosshair } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { LandmarkOverlay3D } from './LandmarkOverlay3D';
+import { useLandmarkProjection, projectLandmarksOnMesh, type ProjectedLandmark } from '@/hooks/useLandmarkProjection';
+import { MEDIAPIPE_DENSE_CONNECTIONS } from '@/types/mediapipeMesh';
 
 interface PatientModelViewerProps {
   modelUrl: string;
   className?: string;
+  // MediaPipe landmarks data (normalized 0-1)
+  landmarks2D?: { x: number; y: number; z?: number }[];
+  // Connection pairs for mesh
+  connections?: [number, number][];
+  // Visual style for landmarks
+  landmarkVisualStyle?: 'minimal' | 'standard' | 'detailed';
 }
 
 // Component that loads and displays the patient's GLTF model
@@ -15,7 +25,8 @@ const PatientModel: React.FC<{
   modelUrl: string;
   wireframe: boolean;
   showOverlay: boolean;
-}> = ({ modelUrl, wireframe, showOverlay }) => {
+  onSceneReady?: (scene: THREE.Object3D) => void;
+}> = ({ modelUrl, wireframe, showOverlay, onSceneReady }) => {
   const { scene } = useGLTF(modelUrl);
 
   // Clone the scene to avoid mutating the cached version
@@ -56,10 +67,97 @@ const PatientModel: React.FC<{
     return clone;
   }, [scene, wireframe, showOverlay]);
 
+  // Notify parent when scene is ready
+  useEffect(() => {
+    if (onSceneReady && clonedScene) {
+      onSceneReady(clonedScene);
+    }
+  }, [clonedScene, onSceneReady]);
+
   return (
     <Center>
       <primitive object={clonedScene} scale={1} />
     </Center>
+  );
+};
+
+// Inner scene component that has access to Three.js context
+const SceneContent: React.FC<{
+  modelUrl: string;
+  wireframe: boolean;
+  showOverlay: boolean;
+  showLandmarks: boolean;
+  landmarks2D?: { x: number; y: number; z?: number }[];
+  connections?: [number, number][];
+  landmarkOpacity: number;
+  landmarkVisualStyle: 'minimal' | 'standard' | 'detailed';
+}> = ({ 
+  modelUrl, 
+  wireframe, 
+  showOverlay, 
+  showLandmarks,
+  landmarks2D,
+  connections,
+  landmarkOpacity,
+  landmarkVisualStyle,
+}) => {
+  const [meshRef, setMeshRef] = useState<THREE.Object3D | null>(null);
+  const [projectedLandmarks, setProjectedLandmarks] = useState<ProjectedLandmark[]>([]);
+  
+  const { camera } = useThree();
+
+  // Project landmarks when mesh is ready
+  useEffect(() => {
+    if (!meshRef || !landmarks2D || landmarks2D.length === 0) {
+      setProjectedLandmarks([]);
+      return;
+    }
+
+    // Project landmarks onto the mesh surface
+    const projected = projectLandmarksOnMesh(
+      landmarks2D,
+      meshRef,
+      camera.position.clone()
+    );
+    
+    setProjectedLandmarks(projected);
+  }, [meshRef, landmarks2D, camera.position]);
+
+  // Get valid connections
+  const validConnections = useMemo(() => {
+    if (!landmarks2D || landmarks2D.length === 0) return [];
+    const inputConnections = connections || MEDIAPIPE_DENSE_CONNECTIONS;
+    const maxIndex = landmarks2D.length - 1;
+    return inputConnections.filter(([a, b]) => a <= maxIndex && b <= maxIndex);
+  }, [landmarks2D, connections]);
+
+  const handleSceneReady = useCallback((scene: THREE.Object3D) => {
+    setMeshRef(scene);
+  }, []);
+
+  return (
+    <>
+      <PatientModel
+        modelUrl={modelUrl}
+        wireframe={wireframe}
+        showOverlay={showOverlay}
+        onSceneReady={handleSceneReady}
+      />
+      
+      {/* Landmark overlay */}
+      {showLandmarks && projectedLandmarks.length > 0 && (
+        <LandmarkOverlay3D
+          landmarks={projectedLandmarks}
+          connections={validConnections}
+          visible={showLandmarks}
+          opacity={landmarkOpacity}
+          visualStyle={landmarkVisualStyle}
+          showConnections={true}
+        />
+      )}
+      
+      <Environment preset="studio" />
+    </>
   );
 };
 
@@ -73,12 +171,19 @@ const LoadingFallback = () => (
 
 export const PatientModelViewer: React.FC<PatientModelViewerProps> = ({
   modelUrl,
-  className
+  className,
+  landmarks2D,
+  connections,
+  landmarkVisualStyle = 'standard',
 }) => {
   const controlsRef = useRef<any>(null);
   const [showWireframe, setShowWireframe] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [showLandmarks, setShowLandmarks] = useState(true);
+  const [landmarkOpacity, setLandmarkOpacity] = useState(80);
   const [isLoading, setIsLoading] = useState(true);
+
+  const hasLandmarks = landmarks2D && landmarks2D.length > 0;
 
   const handleReset = () => {
     if (controlsRef.current) {
@@ -106,6 +211,18 @@ export const PatientModelViewer: React.FC<PatientModelViewerProps> = ({
     <div className={`relative w-full h-full min-h-[400px] bg-muted/30 rounded-lg overflow-hidden ${className || ''}`}>
       {/* Toolbar */}
       <div className="absolute top-3 right-3 z-10 flex gap-1">
+        {/* Landmarks toggle - only show if landmarks available */}
+        {hasLandmarks && (
+          <Button
+            variant={showLandmarks ? "secondary" : "outline"}
+            size="icon"
+            className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+            onClick={() => setShowLandmarks(!showLandmarks)}
+            title={showLandmarks ? "Ocultar Landmarks" : "Mostrar Landmarks"}
+          >
+            <Crosshair className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant={showWireframe ? "secondary" : "outline"}
           size="icon"
@@ -159,6 +276,24 @@ export const PatientModelViewer: React.FC<PatientModelViewerProps> = ({
         Scan 3D do Paciente
       </div>
 
+      {/* Landmark opacity control - only show when landmarks visible */}
+      {hasLandmarks && showLandmarks && (
+        <div className="absolute bottom-14 left-3 z-10 px-3 py-2 rounded-lg bg-background/90 backdrop-blur-sm border border-border/50 w-48">
+          <div className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
+            <Crosshair className="h-3 w-3" />
+            Opacidade Landmarks
+          </div>
+          <Slider
+            value={[landmarkOpacity]}
+            onValueChange={([v]) => setLandmarkOpacity(v)}
+            min={10}
+            max={100}
+            step={5}
+            className="w-full"
+          />
+        </div>
+      )}
+
       {/* Canvas */}
       <Canvas
         camera={{ position: [0, 0, 3], fov: 50 }}
@@ -169,12 +304,16 @@ export const PatientModelViewer: React.FC<PatientModelViewerProps> = ({
         <directionalLight position={[-5, -5, -5]} intensity={0.3} />
         
         <Suspense fallback={<LoadingFallback />}>
-          <PatientModel
+          <SceneContent
             modelUrl={modelUrl}
             wireframe={showWireframe}
             showOverlay={showOverlay}
+            showLandmarks={showLandmarks && hasLandmarks}
+            landmarks2D={landmarks2D}
+            connections={connections}
+            landmarkOpacity={landmarkOpacity / 100}
+            landmarkVisualStyle={landmarkVisualStyle}
           />
-          <Environment preset="studio" />
         </Suspense>
         
         <OrbitControls
@@ -194,6 +333,14 @@ export const PatientModelViewer: React.FC<PatientModelViewerProps> = ({
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <span className="text-sm text-muted-foreground">Carregando modelo 3D...</span>
           </div>
+        </div>
+      )}
+
+      {/* Landmark info badge */}
+      {hasLandmarks && showLandmarks && (
+        <div className="absolute top-12 left-3 z-10 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+          <Crosshair className="h-3 w-3" />
+          {landmarks2D?.length} landmarks projetados
         </div>
       )}
 
