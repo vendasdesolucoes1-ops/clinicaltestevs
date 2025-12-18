@@ -101,6 +101,8 @@ export default function Workbench() {
     setOpacity: setMediaPipeMeshOpacity,
     density: mediaPipeMeshDensity,
     setDensity: setMediaPipeMeshDensity,
+    visualStyle: mediaPipeMeshVisualStyle,
+    setVisualStyle: setMediaPipeMeshVisualStyle,
     status: mediaPipeStatus,
     triggerAnalysis: triggerMediaPipeAnalysis,
     clearMesh: clearMediaPipeMesh,
@@ -757,6 +759,7 @@ export default function Workbench() {
                 showMesh={showMesh && (mediaPipeMeshVisible || !mediaPipeMeshData)}
                 meshOpacity={mediaPipeMeshData ? mediaPipeMeshOpacity : meshOpacity}
                 meshDensity={mediaPipeMeshDensity}
+                meshVisualStyle={mediaPipeMeshVisualStyle}
                 meshEditMode={meshEditMode}
                 connectingFrom={connectingFrom}
                 onMeshPointMove={updatePoint}
@@ -850,6 +853,8 @@ export default function Workbench() {
             onMeshOpacityChange={setMeshOpacity}
             meshDensity={meshDensity}
             onMeshDensityChange={setMeshDensity}
+            meshVisualStyle={mediaPipeMeshVisualStyle}
+            onMeshVisualStyleChange={setMediaPipeMeshVisualStyle}
             meshEditMode={meshEditMode}
             onMeshEditModeChange={setMeshEditMode}
             isConnecting={!!connectingFrom}

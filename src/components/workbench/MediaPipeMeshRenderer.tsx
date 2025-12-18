@@ -2,24 +2,51 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
 import { MediaPipeMeshData, MEDIAPIPE_SIMPLIFIED_CONNECTIONS, MEDIAPIPE_DENSE_CONNECTIONS } from '@/types/mediapipeMesh';
 
+export type MeshVisualStyle = 'minimal' | 'standard' | 'detailed';
+
 interface MediaPipeMeshRendererProps {
   canvas: fabric.Canvas | null;
   meshData: MediaPipeMeshData | null;
   visible: boolean;
   opacity: number;
   density: 'simple' | 'dense';
+  visualStyle: MeshVisualStyle;
   imageWidth: number;
   imageHeight: number;
   imageLeft: number;
   imageTop: number;
 }
 
-// Cores para visualização
-const POINT_COLOR = '#00ff88';
-const POINT_STROKE = '#ffffff';
-const LINE_COLOR = 'rgba(0, 255, 136, 0.6)';
-const LINE_COLOR_DENSE = 'rgba(0, 200, 255, 0.4)';
-const POINT_RADIUS = 2;
+// Estilos minimalistas - tons de azul clínico sutis
+const MESH_STYLES = {
+  minimal: {
+    pointRadius: 0.8,
+    pointColor: 'rgba(120, 180, 220, 0.6)',
+    pointStroke: 'transparent',
+    pointStrokeWidth: 0,
+    lineWidth: 0.3,
+    lineColor: 'rgba(120, 180, 220, 0.18)',
+    lineColorDense: 'rgba(100, 160, 200, 0.12)',
+  },
+  standard: {
+    pointRadius: 1.2,
+    pointColor: 'rgba(100, 170, 210, 0.7)',
+    pointStroke: 'rgba(255, 255, 255, 0.2)',
+    pointStrokeWidth: 0.5,
+    lineWidth: 0.5,
+    lineColor: 'rgba(100, 170, 210, 0.25)',
+    lineColorDense: 'rgba(80, 150, 190, 0.18)',
+  },
+  detailed: {
+    pointRadius: 1.6,
+    pointColor: 'rgba(80, 160, 200, 0.8)',
+    pointStroke: 'rgba(255, 255, 255, 0.35)',
+    pointStrokeWidth: 0.8,
+    lineWidth: 0.7,
+    lineColor: 'rgba(80, 160, 200, 0.35)',
+    lineColorDense: 'rgba(60, 140, 180, 0.25)',
+  },
+};
 
 export const MediaPipeMeshRenderer = ({
   canvas,
@@ -27,6 +54,7 @@ export const MediaPipeMeshRenderer = ({
   visible,
   opacity,
   density,
+  visualStyle,
   imageWidth,
   imageHeight,
   imageLeft,
@@ -34,6 +62,8 @@ export const MediaPipeMeshRenderer = ({
 }: MediaPipeMeshRendererProps) => {
   const meshObjectsRef = useRef<fabric.Object[]>([]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; id: number } | null>(null);
+
+  const style = MESH_STYLES[visualStyle];
 
   const clearMesh = useCallback(() => {
     if (!canvas) return;
@@ -72,15 +102,18 @@ export const MediaPipeMeshRenderer = ({
       ? meshData.connections
       : (density === 'dense' ? MEDIAPIPE_DENSE_CONNECTIONS : MEDIAPIPE_SIMPLIFIED_CONNECTIONS);
 
-    // Desenhar as linhas de conexão
+    const lineColor = density === 'dense' ? style.lineColorDense : style.lineColor;
+
+    // Desenhar as linhas de conexão primeiro (pontos ficam por cima)
     connectionsToUse.forEach(([fromId, toId]) => {
       const from = pointsMap.get(fromId);
       const to = pointsMap.get(toId);
       
       if (from && to) {
         const line = new fabric.Line([from.x, from.y, to.x, to.y], {
-          stroke: density === 'dense' ? LINE_COLOR_DENSE : LINE_COLOR,
-          strokeWidth: density === 'dense' ? 0.8 : 1.2,
+          stroke: lineColor,
+          strokeWidth: style.lineWidth,
+          strokeLineCap: 'round',
           selectable: false,
           evented: false,
           opacity: opacity / 100,
@@ -98,12 +131,12 @@ export const MediaPipeMeshRenderer = ({
       if (!coords) return;
 
       const circle = new fabric.Circle({
-        radius: POINT_RADIUS,
-        fill: POINT_COLOR,
-        stroke: POINT_STROKE,
-        strokeWidth: 1,
-        left: coords.x - POINT_RADIUS,
-        top: coords.y - POINT_RADIUS,
+        radius: style.pointRadius,
+        fill: style.pointColor,
+        stroke: style.pointStroke,
+        strokeWidth: style.pointStrokeWidth,
+        left: coords.x - style.pointRadius,
+        top: coords.y - style.pointRadius,
         selectable: false,
         hasControls: false,
         hasBorders: false,
@@ -119,7 +152,7 @@ export const MediaPipeMeshRenderer = ({
     });
 
     canvas.renderAll();
-  }, [canvas, meshData, visible, opacity, density, imageWidth, imageHeight, imageLeft, imageTop, clearMesh]);
+  }, [canvas, meshData, visible, opacity, density, visualStyle, style, imageWidth, imageHeight, imageLeft, imageTop, clearMesh]);
 
   useEffect(() => {
     drawMesh();
@@ -135,7 +168,7 @@ export const MediaPipeMeshRenderer = ({
         const pointer = canvas.getPointer(e.e);
         setTooltip({
           x: pointer.x,
-          y: pointer.y - 25,
+          y: pointer.y - 20,
           id: (target as any).pointId,
         });
       }
@@ -167,14 +200,14 @@ export const MediaPipeMeshRenderer = ({
   if (tooltip) {
     return (
       <div
-        className="absolute pointer-events-none z-50 px-2 py-1 text-xs font-medium bg-popover text-popover-foreground border border-border rounded shadow-lg"
+        className="absolute pointer-events-none z-50 px-1.5 py-0.5 text-[10px] font-mono bg-popover/90 text-popover-foreground border border-border/50 rounded shadow-sm backdrop-blur-sm"
         style={{
           left: tooltip.x,
           top: tooltip.y,
           transform: 'translateX(-50%)',
         }}
       >
-        Ponto #{tooltip.id}
+        #{tooltip.id}
       </div>
     );
   }

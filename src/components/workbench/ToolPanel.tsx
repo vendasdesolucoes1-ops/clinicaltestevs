@@ -51,6 +51,7 @@ import { cn } from '@/lib/utils';
 
 import { type MeshDensity, type SymmetryResult } from '@/types/facialLandmarks';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
+import { type MeshVisualStyle } from './MediaPipeMeshRenderer';
 import { SymmetryIndicator } from './SymmetryIndicator';
 import { WorkflowProgressPanel } from './WorkflowProgressPanel';
 import { AnalysisHistory } from './AnalysisHistory';
@@ -77,6 +78,8 @@ interface ToolPanelProps {
   onMeshOpacityChange: (opacity: number) => void;
   meshDensity: MeshDensity;
   onMeshDensityChange: (density: MeshDensity) => void;
+  meshVisualStyle: MeshVisualStyle;
+  onMeshVisualStyleChange: (style: MeshVisualStyle) => void;
   meshEditMode: MeshEditMode;
   onMeshEditModeChange: (mode: MeshEditMode) => void;
   isConnecting: boolean;
@@ -155,6 +158,8 @@ export function ToolPanel({
   onMeshOpacityChange,
   meshDensity,
   onMeshDensityChange,
+  meshVisualStyle,
+  onMeshVisualStyleChange,
   meshEditMode,
   onMeshEditModeChange,
   isConnecting,
@@ -321,6 +326,40 @@ export function ToolPanel({
                     step={5}
                     disabled={!showMesh}
                   />
+                </div>
+
+                {/* Visual Style Selector */}
+                <div className="space-y-2">
+                  <Label className="text-xs">Estilo Visual</Label>
+                  <div className="flex gap-1">
+                    <Button
+                      variant={meshVisualStyle === 'minimal' ? 'tool-active' : 'outline'}
+                      size="sm"
+                      className="flex-1 h-7 px-1.5"
+                      onClick={() => onMeshVisualStyleChange('minimal')}
+                      disabled={!showMesh}
+                    >
+                      <span className="text-[10px]">Minimal</span>
+                    </Button>
+                    <Button
+                      variant={meshVisualStyle === 'standard' ? 'tool-active' : 'outline'}
+                      size="sm"
+                      className="flex-1 h-7 px-1.5"
+                      onClick={() => onMeshVisualStyleChange('standard')}
+                      disabled={!showMesh}
+                    >
+                      <span className="text-[10px]">Padrão</span>
+                    </Button>
+                    <Button
+                      variant={meshVisualStyle === 'detailed' ? 'tool-active' : 'outline'}
+                      size="sm"
+                      className="flex-1 h-7 px-1.5"
+                      onClick={() => onMeshVisualStyleChange('detailed')}
+                      disabled={!showMesh}
+                    >
+                      <span className="text-[10px]">Detalhado</span>
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Density Toggle */}
