@@ -1,10 +1,11 @@
-// Tool Panel - Right side panel with tools and simulation controls - v3
+// Tool Panel - Right side panel with CLINICAL-FIRST organization
+// Reorganized by clinical stages: AVALIAÇÃO → PLANEJAMENTO → DOCUMENTAÇÃO
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Move,
   Scissors,
   Circle,
-  PenTool,
+  ArrowUpRight,
   Type,
   Eraser,
   Undo2,
@@ -12,7 +13,6 @@ import {
   Trash2,
   Sliders,
   Play,
-  Check,
   Plus,
   Minus,
   Grid3X3,
@@ -25,6 +25,11 @@ import {
   Triangle,
   Brain,
   Loader2,
+  FileText,
+  Target,
+  Crosshair,
+  MapPin,
+  ClipboardList,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -59,8 +64,18 @@ import { type MeshVisualStyle } from './MediaPipeMeshRenderer';
 import { SymmetryIndicator } from './SymmetryIndicator';
 import { WorkflowProgressPanel } from './WorkflowProgressPanel';
 import { AnalysisHistory } from './AnalysisHistory';
+import { AnatomicalMeasurementsPanel } from './AnatomicalMeasurements';
+import { 
+  CORRECTION_PROCEDURES, 
+  INTERVENTION_TYPES,
+  MARKING_TYPES,
+  SURGICAL_TECHNIQUES,
+} from '@/types/clinicalTools';
 
-export type ToolType = 'select' | 'warp' | 'volume' | 'incision' | 'suture' | 'annotate' | 'eraser' | 'measure' | 'angle';
+export type ToolType = 'select' | 'correction_vector' | 'intervention_area' | 'surgical_marking' | 'annotate' | 'eraser' | 'measure' | 'angle';
+
+// Legacy type alias for backwards compatibility
+export type LegacyToolType = 'warp' | 'volume' | 'incision' | 'suture';
 
 interface ToolPanelProps {
   activeTool: ToolType;
@@ -91,6 +106,10 @@ interface ToolPanelProps {
   isAnalyzingFace: boolean;
   symmetryResult: SymmetryResult | null;
 
+  // Anatomical measurements
+  anatomicalMeasurements?: any;
+  isCalibrated?: boolean;
+
   // Optional: integrate workflow + history in-panel
   caseId?: string;
   onRetryAnalysis?: () => void;
@@ -116,46 +135,42 @@ interface ToolPanelProps {
   activePointsCount?: number;
 }
 
-const TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
-  { id: 'select', icon: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-      <path d="M12 3v18M3 12h18" strokeLinecap="round" />
-      <path d="M8 8c0-2 2-4 4-4s4 2 4 4M8 16c0 2 2 4 4 4s4-2 4-4" strokeLinecap="round" />
-    </svg>
-  ), label: 'Puxar Pele', tooltip: 'Clique e arraste para simular tração de pele. Ajuste raio e intensidade.', shortcut: '1' },
-  { id: 'warp', icon: Move, label: 'Selecionar', tooltip: 'Selecione e mova elementos no canvas.', shortcut: '2' },
-  { id: 'volume', icon: Circle, label: 'Volume', tooltip: 'Adicione (+) ou remova (-) volume tecidual com o brush.', shortcut: '3' },
-  { id: 'incision', icon: Scissors, label: 'Incisão', tooltip: 'Desenhe linhas de corte cirúrgico. Configure tipo e profundidade.', shortcut: '4' },
-  { id: 'suture', icon: PenTool, label: 'Sutura', tooltip: 'Simule pontos de sutura ao longo de uma linha.', shortcut: '5' },
-  { id: 'annotate', icon: Type, label: 'Anotar', tooltip: 'Adicione textos, setas e marcações livres.', shortcut: '6' },
-  { id: 'measure', icon: Ruler, label: 'Medir', tooltip: 'Clique em 2 pontos QUAISQUER da imagem para medir distância (em cm se calibrado).', shortcut: '8' },
-  { id: 'angle', icon: Triangle, label: 'Ângulo', tooltip: 'Clique em 3 pontos do mesh para medir ângulo (ponto central é o vértice).', shortcut: '9' },
-  { id: 'eraser', icon: Eraser, label: 'Borracha', tooltip: 'Apague marcações individuais.', shortcut: '7' },
+// ============= CLINICAL TOOL DEFINITIONS =============
+
+const PLANNING_TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
+  { 
+    id: 'correction_vector', 
+    icon: ArrowUpRight, 
+    label: 'Vetor de Correção', 
+    tooltip: 'Marque direção e magnitude de correção. Mostra medida em mm.', 
+    shortcut: '1' 
+  },
+  { 
+    id: 'intervention_area', 
+    icon: Target, 
+    label: 'Área de Intervenção', 
+    tooltip: 'Delimite região cirúrgica (preenchimento, ressecção, lifting).', 
+    shortcut: '2' 
+  },
+  { 
+    id: 'surgical_marking', 
+    icon: Scissors, 
+    label: 'Marcação Cirúrgica', 
+    tooltip: 'Trace linhas de incisão, limites de descolamento ou suturas.', 
+    shortcut: '3' 
+  },
 ];
 
-const SUTURE_TYPES = [
-  { value: 'simples', label: 'Ponto Simples' },
-  { value: 'donati', label: 'Donati' },
-  { value: 'subcuticular', label: 'Subcuticular' },
-  { value: 'colchoeiro', label: 'Colchoeiro' },
-  { value: 'continuo', label: 'Contínuo' },
+const UTILITY_TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
+  { id: 'select', icon: Move, label: 'Selecionar', tooltip: 'Selecione e mova elementos no canvas.', shortcut: '4' },
+  { id: 'measure', icon: Ruler, label: 'Medir', tooltip: 'Meça distância entre 2 pontos (em mm se calibrado).', shortcut: '5' },
+  { id: 'angle', icon: Triangle, label: 'Ângulo', tooltip: 'Meça ângulo entre 3 pontos do mesh.', shortcut: '6' },
+  { id: 'annotate', icon: Type, label: 'Anotar', tooltip: 'Adicione textos e anotações.', shortcut: '7' },
+  { id: 'eraser', icon: Eraser, label: 'Apagar', tooltip: 'Apague marcações individuais.', shortcut: '8' },
 ];
 
-const INCISION_TYPES = [
-  { value: 'linear', label: 'Linear' },
-  { value: 'curvo', label: 'Curvo' },
-  { value: 'zetaplastia', label: 'Zetaplastia' },
-  { value: 'wplastia', label: 'W-plastia' },
-];
+// ============= ANIMATED COUNTER =============
 
-const INSTRUMENTS = [
-  { value: 'bisturi_15', label: 'Bisturi nº 15' },
-  { value: 'bisturi_11', label: 'Bisturi nº 11' },
-  { value: 'bisturi_10', label: 'Bisturi nº 10' },
-  { value: 'eletrico', label: 'Elétrico' },
-];
-
-// Animated counter component for smooth number transitions
 function AnimatedCounter({ count }: { count: number }) {
   const [displayCount, setDisplayCount] = useState(count);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -165,7 +180,6 @@ function AnimatedCounter({ count }: { count: number }) {
     if (prevCountRef.current !== count) {
       setIsAnimating(true);
       
-      // Quick fade out, update number, fade in
       const timeout = setTimeout(() => {
         setDisplayCount(count);
         prevCountRef.current = count;
@@ -194,6 +208,8 @@ function AnimatedCounter({ count }: { count: number }) {
   );
 }
 
+// ============= MAIN COMPONENT =============
+
 export function ToolPanel({
   activeTool,
   onToolChange,
@@ -218,6 +234,8 @@ export function ToolPanel({
   onCancelConnection,
   isAnalyzingFace,
   symmetryResult,
+  anatomicalMeasurements,
+  isCalibrated = false,
   caseId,
   onRetryAnalysis,
   onCancelAnalysis,
@@ -247,11 +265,45 @@ export function ToolPanel({
 
   return (
     <div className="h-full min-h-0 flex flex-col">
-      {/* Fixed header: primary tools */}
+      {/* Fixed header: Clinical planning tools */}
       <div className="shrink-0 border-b border-border bg-card">
         <div className="p-3">
-          <div className="grid grid-cols-4 gap-1.5">
-            {TOOLS.map((tool) => {
+          {/* Clinical Section Label */}
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] font-medium text-primary uppercase tracking-wider">
+              🎯 Planejamento
+            </span>
+          </div>
+          
+          {/* Planning Tools */}
+          <div className="grid grid-cols-3 gap-1.5 mb-2">
+            {PLANNING_TOOLS.map((tool) => {
+              const Icon = tool.icon;
+              return (
+                <Tooltip key={tool.id}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={activeTool === tool.id ? 'tool-active' : 'tool'}
+                      size="sm"
+                      onClick={() => onToolChange(tool.id)}
+                      className="h-auto py-2 px-2 flex flex-col items-center gap-1"
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span className="text-[9px] leading-tight text-center">{tool.label}</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-[220px]">
+                    <p className="font-medium">{tool.label} ({tool.shortcut})</p>
+                    <p className="text-xs text-muted-foreground mt-1">{tool.tooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+
+          {/* Utility Tools */}
+          <div className="grid grid-cols-5 gap-1">
+            {UTILITY_TOOLS.map((tool) => {
               const Icon = tool.icon;
               return (
                 <Tooltip key={tool.id}>
@@ -260,19 +312,16 @@ export function ToolPanel({
                       variant={activeTool === tool.id ? 'tool-active' : 'tool'}
                       size="icon"
                       onClick={() => onToolChange(tool.id)}
-                      className="h-10 w-10 relative"
+                      className="h-8 w-full relative"
                     >
-                      <Icon />
-                      <span className="absolute bottom-0.5 right-0.5 text-[9px] font-mono text-muted-foreground">
+                      <Icon className="h-3.5 w-3.5" />
+                      <span className="absolute bottom-0 right-0.5 text-[8px] font-mono text-muted-foreground">
                         {tool.shortcut}
                       </span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="left" className="max-w-[220px]">
-                    <p className="font-medium">
-                      {tool.label} ({tool.shortcut})
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">{tool.tooltip}</p>
+                  <TooltipContent side="bottom">
+                    <p>{tool.label} ({tool.shortcut})</p>
                   </TooltipContent>
                 </Tooltip>
               );
@@ -283,13 +332,7 @@ export function ToolPanel({
           <div className="flex gap-1.5 mt-3">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onUndo}
-                  disabled={!canUndo}
-                  className="flex-1"
-                >
+                <Button variant="outline" size="sm" onClick={onUndo} disabled={!canUndo} className="flex-1">
                   <Undo2 className="h-4 w-4" />
                   <span className="text-xs ml-1 hidden sm:inline">Z</span>
                 </Button>
@@ -298,13 +341,7 @@ export function ToolPanel({
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onRedo}
-                  disabled={!canRedo}
-                  className="flex-1"
-                >
+                <Button variant="outline" size="sm" onClick={onRedo} disabled={!canRedo} className="flex-1">
                   <Redo2 className="h-4 w-4" />
                   <span className="text-xs ml-1 hidden sm:inline">⇧Z</span>
                 </Button>
@@ -313,12 +350,7 @@ export function ToolPanel({
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onClear}
-                  className="text-destructive hover:text-destructive"
-                >
+                <Button variant="outline" size="sm" onClick={onClear} className="text-destructive hover:text-destructive">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -328,9 +360,19 @@ export function ToolPanel({
         </div>
       </div>
 
-      {/* Scrollable body: collapsible sections */}
+      {/* Scrollable body: Clinical sections */}
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-thin">
-        <Accordion type="single" collapsible defaultValue="mesh" className="w-full">
+        <Accordion type="multiple" defaultValue={['avaliacao']} className="w-full">
+          
+          {/* ============= AVALIAÇÃO ============= */}
+          <div className="border-b border-primary/20 bg-primary/5">
+            <div className="px-3 py-1.5 flex items-center gap-2">
+              <span className="text-[10px] font-medium text-primary uppercase tracking-wider">
+                📋 Avaliação
+              </span>
+            </div>
+          </div>
+
           {/* Mesh Facial */}
           <AccordionItem value="mesh" className="border-b border-border">
             <AccordionTrigger className="px-3 py-2.5 text-xs">
@@ -356,11 +398,7 @@ export function ToolPanel({
                     onClick={() => onShowMeshChange(!showMesh)}
                     className="h-7 px-2"
                   >
-                    {showMesh ? (
-                      <Eye className="h-3.5 w-3.5 mr-1" />
-                    ) : (
-                      <EyeOff className="h-3.5 w-3.5 mr-1" />
-                    )}
+                    {showMesh ? <Eye className="h-3.5 w-3.5 mr-1" /> : <EyeOff className="h-3.5 w-3.5 mr-1" />}
                     <span className="text-xs">{showMesh ? 'Visível' : 'Oculto'}</span>
                   </Button>
                 </div>
@@ -369,9 +407,7 @@ export function ToolPanel({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs">Opacidade</Label>
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {Math.round(meshOpacity)}%
-                    </span>
+                    <span className="text-xs text-muted-foreground font-mono">{Math.round(meshOpacity)}%</span>
                   </div>
                   <Slider
                     value={[meshOpacity]}
@@ -387,33 +423,20 @@ export function ToolPanel({
                 <div className="space-y-2">
                   <Label className="text-xs">Estilo Visual</Label>
                   <div className="flex gap-1">
-                    <Button
-                      variant={meshVisualStyle === 'minimal' ? 'tool-active' : 'outline'}
-                      size="sm"
-                      className="flex-1 h-7 px-1.5"
-                      onClick={() => onMeshVisualStyleChange('minimal')}
-                      disabled={!showMesh}
-                    >
-                      <span className="text-[10px]">Minimal</span>
-                    </Button>
-                    <Button
-                      variant={meshVisualStyle === 'standard' ? 'tool-active' : 'outline'}
-                      size="sm"
-                      className="flex-1 h-7 px-1.5"
-                      onClick={() => onMeshVisualStyleChange('standard')}
-                      disabled={!showMesh}
-                    >
-                      <span className="text-[10px]">Padrão</span>
-                    </Button>
-                    <Button
-                      variant={meshVisualStyle === 'detailed' ? 'tool-active' : 'outline'}
-                      size="sm"
-                      className="flex-1 h-7 px-1.5"
-                      onClick={() => onMeshVisualStyleChange('detailed')}
-                      disabled={!showMesh}
-                    >
-                      <span className="text-[10px]">Detalhado</span>
-                    </Button>
+                    {(['minimal', 'standard', 'detailed'] as const).map((style) => (
+                      <Button
+                        key={style}
+                        variant={meshVisualStyle === style ? 'tool-active' : 'outline'}
+                        size="sm"
+                        className="flex-1 h-7 px-1.5"
+                        onClick={() => onMeshVisualStyleChange(style)}
+                        disabled={!showMesh}
+                      >
+                        <span className="text-[10px]">
+                          {style === 'minimal' ? 'Minimal' : style === 'standard' ? 'Padrão' : 'Detalhado'}
+                        </span>
+                      </Button>
+                    ))}
                   </div>
                 </div>
 
@@ -550,12 +573,7 @@ export function ToolPanel({
                 {isConnecting && (
                   <div className="flex items-center justify-between p-2 bg-primary/10 rounded border border-primary/20">
                     <span className="text-xs text-primary">Selecionando segundo ponto...</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      onClick={onCancelConnection}
-                    >
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onCancelConnection}>
                       Cancelar
                     </Button>
                   </div>
@@ -567,52 +585,6 @@ export function ToolPanel({
                   {meshEditMode === 'remove' && 'Clique em um ponto para removê-lo'}
                   {meshEditMode === 'connect' && 'Clique em dois pontos para conectá-los'}
                 </p>
-
-                {/* Color Legend */}
-                <Separator className="my-2" />
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Legenda das Linhas</Label>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <div
-                        className="w-4 h-0.5 rounded"
-                        style={{ backgroundColor: 'hsl(var(--mesh-midline))' }}
-                      />
-                      <span className="text-[10px] text-muted-foreground">Linha Média</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div
-                        className="w-4 h-0.5 rounded"
-                        style={{ backgroundColor: 'hsl(var(--mesh-horizontal))' }}
-                      />
-                      <span className="text-[10px] text-muted-foreground">Horizontal</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div
-                        className="w-4 h-0.5 rounded"
-                        style={{ backgroundColor: 'hsl(var(--mesh-contour))' }}
-                      />
-                      <span className="text-[10px] text-muted-foreground">Contorno</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div
-                        className="w-4 h-0.5 rounded"
-                        style={{ backgroundColor: 'hsl(var(--mesh-diagonal))' }}
-                      />
-                      <span className="text-[10px] text-muted-foreground">Diagonal</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 col-span-2">
-                      <div
-                        className="w-4 h-0.5 rounded border border-border"
-                        style={{ backgroundColor: 'hsl(var(--mesh-custom))' }}
-                      />
-                      <span className="text-[10px] text-muted-foreground">Custom (tracejada)</span>
-                    </div>
-                  </div>
-                  <p className="text-[9px] text-muted-foreground mt-2">
-                    Pontos coloridos por região anatômica. ROI facial tracejada em azul.
-                  </p>
-                </div>
               </div>
             </AccordionContent>
           </AccordionItem>
@@ -622,7 +594,7 @@ export function ToolPanel({
             <AccordionTrigger className="px-3 py-2.5 text-xs">
               <span className="flex items-center gap-2">
                 <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
-                Simetria
+                Análise de Simetria
               </span>
             </AccordionTrigger>
             <AccordionContent className="px-3 pb-3">
@@ -636,200 +608,189 @@ export function ToolPanel({
             </AccordionContent>
           </AccordionItem>
 
-          {/* Parâmetros */}
+          {/* Medidas Anatômicas - NEW! */}
+          <AccordionItem value="anatomical" className="border-b border-border">
+            <AccordionTrigger className="px-3 py-2.5 text-xs">
+              <span className="flex items-center gap-2">
+                <Ruler className="h-3.5 w-3.5 text-muted-foreground" />
+                Medidas Anatômicas
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-3 pb-3">
+              <AnatomicalMeasurementsPanel
+                measurements={anatomicalMeasurements}
+                isCalibrated={isCalibrated}
+              />
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* ============= PLANEJAMENTO ============= */}
+          <div className="border-b border-amber-500/20 bg-amber-500/5">
+            <div className="px-3 py-1.5 flex items-center gap-2">
+              <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                🎯 Parâmetros da Ferramenta
+              </span>
+            </div>
+          </div>
+
+          {/* Tool Parameters - Contextual based on active tool */}
           <AccordionItem value="params" className="border-b border-border">
             <AccordionTrigger className="px-3 py-2.5 text-xs">
               <span className="flex items-center gap-2">
                 <Sliders className="h-3.5 w-3.5 text-muted-foreground" />
-                Parâmetros
+                {activeTool === 'correction_vector' && 'Vetor de Correção'}
+                {activeTool === 'intervention_area' && 'Área de Intervenção'}
+                {activeTool === 'surgical_marking' && 'Marcação Cirúrgica'}
+                {!['correction_vector', 'intervention_area', 'surgical_marking'].includes(activeTool) && 'Parâmetros'}
               </span>
             </AccordionTrigger>
             <AccordionContent className="px-3 pb-3">
               <div className="space-y-4">
-                {/* Common params for brush tools */}
-                {['warp', 'volume', 'incision', 'suture', 'annotate', 'eraser'].includes(activeTool) && (
-                  <>
+                
+                {/* Correction Vector Parameters */}
+                {activeTool === 'correction_vector' && (
+                  <div className="space-y-3">
+                    <p className="text-[10px] text-muted-foreground">
+                      Clique e arraste para indicar direção e magnitude da correção. A medida aparecerá em mm.
+                    </p>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Procedimento Associado</Label>
+                      <Select 
+                        value={toolParams.procedure || 'outro'} 
+                        onValueChange={(v) => setToolParams({ procedure: v })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CORRECTION_PROCEDURES.map((p) => (
+                            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Intervention Area Parameters */}
+                {activeTool === 'intervention_area' && (
+                  <div className="space-y-3">
+                    <p className="text-[10px] text-muted-foreground">
+                      Clique para marcar região de intervenção. A área será calculada em mm².
+                    </p>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Tipo de Intervenção</Label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {INTERVENTION_TYPES.map((type) => (
+                          <Button
+                            key={type.value}
+                            variant={toolParams.interventionType === type.value ? 'tool-active' : 'outline'}
+                            size="sm"
+                            className="h-8 text-xs justify-start gap-2"
+                            onClick={() => setToolParams({ interventionType: type.value, volumeMode: type.value === 'resseccao' ? 'remove' : 'add' })}
+                          >
+                            <span>{type.icon}</span>
+                            {type.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <Label className="text-xs">Raio do Pincel</Label>
+                        <Label className="text-xs">Tamanho da Área</Label>
                         <span className="text-xs text-muted-foreground font-mono">{toolParams.brushSize}px</span>
                       </div>
                       <Slider
                         value={[toolParams.brushSize]}
                         onValueChange={([v]) => setToolParams({ brushSize: v })}
-                        min={5}
-                        max={100}
-                        step={1}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Intensidade</Label>
-                        <span className="text-xs text-muted-foreground font-mono">{toolParams.intensity}%</span>
-                      </div>
-                      <Slider
-                        value={[toolParams.intensity]}
-                        onValueChange={([v]) => setToolParams({ intensity: v })}
-                        min={1}
-                        max={100}
-                        step={1}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Suavização</Label>
-                        <span className="text-xs text-muted-foreground font-mono">{toolParams.smoothing}%</span>
-                      </div>
-                      <Slider
-                        value={[toolParams.smoothing]}
-                        onValueChange={([v]) => setToolParams({ smoothing: v })}
-                        min={0}
-                        max={100}
-                        step={1}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {/* Volume tool specific */}
-                {activeTool === 'volume' && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <Label className="text-xs">Modo de Volume</Label>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={toolParams.volumeMode === 'add' ? 'tool-active' : 'outline'}
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => setToolParams({ volumeMode: 'add' })}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Adicionar
-                        </Button>
-                        <Button
-                          variant={toolParams.volumeMode === 'remove' ? 'tool-active' : 'outline'}
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => setToolParams({ volumeMode: 'remove' })}
-                        >
-                          <Minus className="h-4 w-4 mr-1" />
-                          Remover
-                        </Button>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Incision tool specific */}
-                {activeTool === 'incision' && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <Label className="text-xs">Tipo de Incisão</Label>
-                      <Select value={toolParams.incisionType} onValueChange={(v) => setToolParams({ incisionType: v })}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {INCISION_TYPES.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>
-                              {t.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs">Instrumento</Label>
-                      <Select defaultValue="bisturi_15">
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {INSTRUMENTS.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>
-                              {t.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Profundidade</Label>
-                        <span className="text-xs text-muted-foreground font-mono">{toolParams.incisionDepth}%</span>
-                      </div>
-                      <Slider
-                        value={[toolParams.incisionDepth]}
-                        onValueChange={([v]) => setToolParams({ incisionDepth: v })}
-                        min={10}
-                        max={100}
+                        min={20}
+                        max={150}
                         step={5}
                       />
                     </div>
-                  </>
+                  </div>
                 )}
 
-                {/* Suture tool specific */}
-                {activeTool === 'suture' && (
-                  <>
-                    <Separator />
+                {/* Surgical Marking Parameters */}
+                {activeTool === 'surgical_marking' && (
+                  <div className="space-y-3">
+                    <p className="text-[10px] text-muted-foreground">
+                      Desenhe marcações cirúrgicas. O comprimento será exibido em mm.
+                    </p>
                     <div className="space-y-2">
-                      <Label className="text-xs">Tipo de Sutura</Label>
-                      <Select value={toolParams.sutureType} onValueChange={(v) => setToolParams({ sutureType: v })}>
+                      <Label className="text-xs">Tipo de Marcação</Label>
+                      <Select 
+                        value={toolParams.markingType || 'incision_line'} 
+                        onValueChange={(v) => setToolParams({ markingType: v })}
+                      >
                         <SelectTrigger className="h-8 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {SUTURE_TYPES.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>
-                              {t.label}
-                            </SelectItem>
+                          {MARKING_TYPES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Espaçamento</Label>
-                        <span className="text-xs text-muted-foreground font-mono">{toolParams.sutureSpacing}mm</span>
-                      </div>
-                      <Slider
-                        value={[toolParams.sutureSpacing]}
-                        onValueChange={([v]) => setToolParams({ sutureSpacing: v })}
-                        min={2}
-                        max={15}
-                        step={1}
-                      />
+                      <Label className="text-xs">Técnica Cirúrgica</Label>
+                      <Select 
+                        value={toolParams.surgicalTechnique || 'incisao_linear'} 
+                        onValueChange={(v) => setToolParams({ surgicalTechnique: v })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SURGICAL_TECHNIQUES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Tensão</Label>
-                        <span className="text-xs text-muted-foreground font-mono">{toolParams.sutureTension}%</span>
-                      </div>
-                      <Slider
-                        value={[toolParams.sutureTension]}
-                        onValueChange={([v]) => setToolParams({ sutureTension: v })}
-                        min={10}
-                        max={100}
-                        step={5}
-                      />
+                  </div>
+                )}
+
+                {/* Generic brush parameters for other tools */}
+                {['annotate', 'eraser'].includes(activeTool) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Tamanho</Label>
+                      <span className="text-xs text-muted-foreground font-mono">{toolParams.brushSize}px</span>
                     </div>
-                  </>
+                    <Slider
+                      value={[toolParams.brushSize]}
+                      onValueChange={([v]) => setToolParams({ brushSize: v })}
+                      min={5}
+                      max={100}
+                      step={1}
+                    />
+                  </div>
+                )}
+
+                {/* Measure/Angle info */}
+                {(activeTool === 'measure' || activeTool === 'angle') && (
+                  <div className="p-3 bg-muted/30 rounded-lg">
+                    <p className="text-xs text-muted-foreground">
+                      {activeTool === 'measure' 
+                        ? 'Clique em 2 pontos para medir a distância. Se calibrado, mostrará valor em mm.'
+                        : 'Clique em 3 pontos do mesh para medir o ângulo. O segundo ponto será o vértice.'
+                      }
+                    </p>
+                  </div>
                 )}
               </div>
             </AccordionContent>
           </AccordionItem>
 
-          {/* Simulação (IA) */}
+          {/* Simulação (IA) - Future */}
           <AccordionItem value="simulation" className="border-b border-border">
             <AccordionTrigger className="px-3 py-2.5 text-xs">
               <span className="flex items-center gap-2">
                 <Play className="h-3.5 w-3.5 text-muted-foreground" />
                 Simulação (IA)
+                <span className="text-[9px] px-1.5 py-0.5 bg-muted rounded text-muted-foreground">Futuro</span>
               </span>
             </AccordionTrigger>
             <AccordionContent className="px-3 pb-3">
@@ -897,6 +858,15 @@ export function ToolPanel({
             </AccordionContent>
           </AccordionItem>
 
+          {/* ============= DOCUMENTAÇÃO ============= */}
+          <div className="border-b border-green-500/20 bg-green-500/5">
+            <div className="px-3 py-1.5 flex items-center gap-2">
+              <span className="text-[10px] font-medium text-green-600 dark:text-green-400 uppercase tracking-wider">
+                📊 Documentação
+              </span>
+            </div>
+          </div>
+
           {/* Workflow */}
           {caseId && (
             <AccordionItem value="workflow" className="border-b border-border">
@@ -922,8 +892,8 @@ export function ToolPanel({
             <AccordionItem value="history" className="border-b-0">
               <AccordionTrigger className="px-3 py-2.5 text-xs">
                 <span className="flex items-center gap-2">
-                  <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-                  Histórico
+                  <ClipboardList className="h-3.5 w-3.5 text-muted-foreground" />
+                  Histórico de Análises
                 </span>
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-3">
@@ -945,7 +915,7 @@ export function ToolPanel({
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground">Status</span>
             {isSimulating ? (
-              <span className="text-[10px] text-warning">Processando…</span>
+              <span className="text-[10px] text-amber-500">Processando…</span>
             ) : (
               <span className="text-[10px] text-muted-foreground">Pronto</span>
             )}
