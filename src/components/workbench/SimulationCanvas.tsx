@@ -50,23 +50,21 @@ export interface SimulationCanvasRef {
 }
 
 const TOOL_COLORS: Record<ToolType, string> = {
-  select: '#f59e0b', // Puxar pele (warp arrows)
-  warp: '#0ea5e9',   // Selecionar objetos
-  volume: '#22c55e',
-  incision: '#ef4444',
-  suture: '#8b5cf6',
+  select: '#0ea5e9',           // Selecionar objetos
+  correction_vector: '#f59e0b', // Vetor de correção (setas)
+  intervention_area: '#22c55e', // Área de intervenção
+  surgical_marking: '#ef4444',  // Marcação cirúrgica
   annotate: '#0ea5e9',
   eraser: '#64748b',
-  measure: '#7c3aed', // Purple like reference app
+  measure: '#7c3aed',
   angle: '#f97316',
 };
 
 const TOOL_CURSORS: Record<ToolType, string> = {
-  select: 'crosshair', // Puxar pele
-  warp: 'default',     // Selecionar objetos
-  volume: 'crosshair',
-  incision: 'crosshair',
-  suture: 'crosshair',
+  select: 'default',
+  correction_vector: 'crosshair',
+  intervention_area: 'crosshair',
+  surgical_marking: 'crosshair',
   annotate: 'text',
   eraser: 'pointer',
   measure: 'crosshair',
@@ -405,19 +403,21 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       const canvas = fabricRef.current;
       if (!canvas) return;
 
-      // Only incision and suture use free drawing mode
-      const drawingTools = ['incision', 'suture'];
-      canvas.isDrawingMode = drawingTools.includes(activeTool);
-      canvas.selection = activeTool === 'warp'; // warp = selecionar objetos
+      // surgical_marking uses free drawing mode
+      canvas.isDrawingMode = activeTool === 'surgical_marking';
+      canvas.selection = activeTool === 'select';
       
       if (canvas.isDrawingMode && canvas.freeDrawingBrush) {
-        if (activeTool === 'incision') {
-          canvas.freeDrawingBrush.color = '#ef4444';
-          canvas.freeDrawingBrush.width = Math.max(2, toolParams.incisionDepth / 2);
-        } else if (activeTool === 'suture') {
-          canvas.freeDrawingBrush.color = '#8b5cf6';
-          canvas.freeDrawingBrush.width = 2;
-        }
+        // Color based on marking type
+        const markingColors: Record<string, string> = {
+          'incision_line': '#ef4444',
+          'dissection_limit': '#f97316',
+          'resection_area': '#dc2626',
+          'suture_line': '#8b5cf6',
+          'reference_line': '#6b7280',
+        };
+        canvas.freeDrawingBrush.color = markingColors[toolParams.markingType] || '#ef4444';
+        canvas.freeDrawingBrush.width = 2;
       }
       
       if (!isPanMode) {
@@ -444,58 +444,59 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       const canvas = fabricRef.current;
       if (!canvas) return;
 
-      // Handle path created for incision/suture
+      // Handle path created for surgical_marking
       const handlePathCreated = (e: any) => {
         if (!e.path) return;
         
-        if (activeTool === 'suture') {
-          // Convert path to suture points
-          const sutureGroup = createSuturePoints(
-            e.path,
-            toolParams.sutureSpacing,
-            '#8b5cf6'
-          );
-          canvas.remove(e.path);
-          canvas.add(sutureGroup);
-          canvas.renderAll();
-          
-          const canvasObj: CanvasObject = {
-            id: `suture_${Date.now()}`,
-            type: 'suture',
-            points: [],
-            color: '#8b5cf6',
-            strokeWidth: 2,
-            opacity: 1,
-            layer: 'markings',
+        if (activeTool === 'surgical_marking') {
+          const markingType = toolParams.markingType;
+          const markingColors: Record<string, string> = {
+            'incision_line': '#ef4444',
+            'dissection_limit': '#f97316',
+            'resection_area': '#dc2626',
+            'suture_line': '#8b5cf6',
+            'reference_line': '#6b7280',
           };
-          addObject(canvasObj);
-          onObjectAdded?.(canvasObj);
-          toast.success('Sutura adicionada');
-        } else if (activeTool === 'incision') {
-          // Style incision as dashed line
+          const markingStyles: Record<string, number[]> = {
+            'incision_line': [],
+            'dissection_limit': [8, 4],
+            'resection_area': [4, 4],
+            'suture_line': [],
+            'reference_line': [8, 4],
+          };
+          const markingLabels: Record<string, string> = {
+            'incision_line': 'Linha de incisão marcada',
+            'dissection_limit': 'Limite de descolamento marcado',
+            'resection_area': 'Área de ressecção marcada',
+            'suture_line': 'Linha de sutura marcada',
+            'reference_line': 'Linha de referência marcada',
+          };
+
           e.path.set({
-            stroke: '#ef4444',
-            strokeWidth: Math.max(2, toolParams.incisionDepth / 2),
-            strokeDashArray: [8, 4],
+            stroke: markingColors[markingType] || '#ef4444',
+            strokeWidth: 2,
+            strokeDashArray: markingStyles[markingType] || [],
             fill: 'transparent',
             selectable: true,
             evented: true,
           });
-          (e.path as any).toolType = 'incision';
-          (e.path as any).customName = 'incision_line';
+          (e.path as any).toolType = 'surgical_marking';
+          (e.path as any).markingType = markingType;
+          (e.path as any).customName = `surgical_marking_${markingType}`;
           
           const canvasObj: CanvasObject = {
-            id: `incision_${Date.now()}`,
-            type: 'incision',
+            id: `surgical_${Date.now()}`,
+            type: 'surgical_marking',
             points: [],
-            color: '#ef4444',
-            strokeWidth: toolParams.incisionDepth / 2,
+            color: markingColors[markingType] || '#ef4444',
+            strokeWidth: 2,
             opacity: 1,
             layer: 'markings',
+            metadata: { markingType, technique: toolParams.surgicalTechnique },
           };
           addObject(canvasObj);
           onObjectAdded?.(canvasObj);
-          toast.success('Incisão marcada');
+          toast.success(markingLabels[markingType] || 'Marcação adicionada');
         }
       };
 
@@ -595,30 +596,31 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             
             toast.info('Clique sobre uma marcação para apagar');
           }
-        } else if (activeTool === 'volume') {
-          const volumeIndicator = createVolumeIndicator(
+        } else if (activeTool === 'intervention_area') {
+          const interventionIndicator = createVolumeIndicator(
             pointer.x,
             pointer.y,
             toolParams.brushSize,
             toolParams.volumeMode
           );
-          canvas.add(volumeIndicator);
+          canvas.add(interventionIndicator);
           canvas.renderAll();
           
           const canvasObj: CanvasObject = {
-            id: `volume_${Date.now()}`,
-            type: 'volume',
+            id: `intervention_${Date.now()}`,
+            type: 'intervention_area',
             points: [{ x: pointer.x, y: pointer.y }],
             color: toolParams.volumeMode === 'add' ? '#22c55e' : '#ef4444',
             strokeWidth: toolParams.brushSize,
             opacity: 0.4,
             layer: 'simulation',
+            metadata: { interventionType: toolParams.interventionType },
           };
           addObject(canvasObj);
           onObjectAdded?.(canvasObj);
-          toast.success(toolParams.volumeMode === 'add' ? 'Volume adicionado' : 'Volume removido');
-        } else if (activeTool === 'select') {
-          // select = Puxar Pele (draw traction arrows)
+          toast.success(`Área de intervenção: ${toolParams.interventionType}`);
+        } else if (activeTool === 'correction_vector') {
+          // correction_vector = Vetor de Correção (draw arrows with direction + magnitude)
           warpStartRef.current = { x: pointer.x, y: pointer.y };
         } else if (activeTool === 'annotate') {
           const text = prompt('Digite sua anotação:');
@@ -682,8 +684,8 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       };
 
       const handleMouseUp = (e: any) => {
-        // select = Puxar Pele (creates warp arrows)
-        if (activeTool === 'select' && warpStartRef.current) {
+        // correction_vector = Vetor de Correção (creates arrows with direction + magnitude)
+        if (activeTool === 'correction_vector' && warpStartRef.current) {
           const pointer = canvas.getPointer(e.e);
           const start = warpStartRef.current;
           
@@ -694,18 +696,31 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             canvas.add(warpArrow);
             canvas.renderAll();
             
+            // Calculate magnitude in mm if calibrated
+            const magnitudePx = distance;
+            const magnitudeMm = isCalibrated && pixelsPerMm ? magnitudePx / pixelsPerMm : undefined;
+            
             const canvasObj: CanvasObject = {
-              id: `warp_${Date.now()}`,
-              type: 'warp',
+              id: `correction_${Date.now()}`,
+              type: 'correction_vector',
               points: [start, { x: pointer.x, y: pointer.y }],
               color: '#f59e0b',
               strokeWidth: 3,
               opacity: 1,
               layer: 'simulation',
+              metadata: { 
+                magnitudePx, 
+                magnitudeMm,
+                procedure: toolParams.procedure,
+              },
             };
             addObject(canvasObj);
             onObjectAdded?.(canvasObj);
-            toast.success('Vetor de tração adicionado');
+            
+            const message = magnitudeMm 
+              ? `Vetor de correção: ${magnitudeMm.toFixed(1)}mm` 
+              : `Vetor de correção: ${magnitudePx.toFixed(0)}px`;
+            toast.success(message);
           }
           warpStartRef.current = null;
         }
@@ -1024,10 +1039,9 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     };
 
     // Determine if cursor preview should be shown
-    const showCursorPreview = isMouseOverCanvas && !isPanMode && ['volume', 'eraser', 'incision', 'suture'].includes(activeTool);
-    const cursorSize = activeTool === 'volume' ? toolParams.brushSize : 
-                       activeTool === 'incision' ? Math.max(8, toolParams.incisionDepth / 2) : 
-                       activeTool === 'suture' ? 16 : 20;
+    const showCursorPreview = isMouseOverCanvas && !isPanMode && ['intervention_area', 'eraser', 'surgical_marking'].includes(activeTool);
+    const cursorSize = activeTool === 'intervention_area' ? toolParams.brushSize : 
+                       activeTool === 'surgical_marking' ? 16 : 20;
     const cursorColor = TOOL_COLORS[activeTool] || '#0ea5e9';
 
     return (

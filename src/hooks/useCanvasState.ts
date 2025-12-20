@@ -1,5 +1,6 @@
 // Canvas State Manager - Centralized state for the simulation canvas
 import { create } from 'zustand';
+import { InterventionType, MarkingType } from '@/types/clinicalTools';
 
 export interface Point {
   x: number;
@@ -8,7 +9,7 @@ export interface Point {
 
 export interface CanvasObject {
   id: string;
-  type: 'path' | 'warp' | 'volume' | 'incision' | 'suture' | 'annotation' | 'arrow';
+  type: 'path' | 'correction_vector' | 'intervention_area' | 'surgical_marking' | 'annotation' | 'arrow';
   points: Point[];
   color: string;
   strokeWidth: number;
@@ -29,12 +30,21 @@ export interface ToolParams {
   brushSize: number;
   intensity: number;
   smoothing: number;
+  // Intervention Area params
+  interventionType: InterventionType;
   volumeMode: 'add' | 'remove';
+  // Surgical Marking params
+  markingType: MarkingType;
+  surgicalTechnique: string;
+  // Correction Vector params
+  procedure: string;
+  // Legacy params for backwards compatibility
   sutureType: string;
   sutureSpacing: number;
   sutureTension: number;
   incisionType: string;
   incisionDepth: number;
+  // Annotation params
   annotationColor: string;
   annotationFontSize: number;
 }
@@ -134,7 +144,13 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
     brushSize: 20,
     intensity: 50,
     smoothing: 30,
+    // New clinical params
+    interventionType: 'preenchimento',
     volumeMode: 'add',
+    markingType: 'incision_line',
+    surgicalTechnique: 'incisao_linear',
+    procedure: 'lifting',
+    // Legacy params
     sutureType: 'simples',
     sutureSpacing: 5,
     sutureTension: 50,
