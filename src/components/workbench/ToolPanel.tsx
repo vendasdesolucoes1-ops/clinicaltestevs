@@ -70,6 +70,8 @@ import {
   INTERVENTION_TYPES,
   MARKING_TYPES,
   SURGICAL_TECHNIQUES,
+  type MarkingType,
+  type InterventionType,
 } from '@/types/clinicalTools';
 
 export type ToolType = 'select' | 'correction_vector' | 'intervention_area' | 'surgical_marking' | 'annotate' | 'eraser' | 'measure' | 'angle';
@@ -721,7 +723,7 @@ export function ToolPanel({
                       <Label className="text-xs">Tipo de Marcação</Label>
                       <Select 
                         value={toolParams.markingType || 'incision_line'} 
-                        onValueChange={(v) => setToolParams({ markingType: v })}
+                        onValueChange={(v) => setToolParams({ markingType: v as MarkingType })}
                       >
                         <SelectTrigger className="h-8 text-xs">
                           <SelectValue />

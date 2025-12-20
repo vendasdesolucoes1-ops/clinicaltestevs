@@ -33,24 +33,20 @@ interface CanvasContextBarProps {
 
 const TOOL_INSTRUCTIONS: Record<ToolType | 'pan', { action: string; hint: string }> = {
   select: { 
-    action: 'Puxar Pele', 
-    hint: 'Clique e arraste para simular tração de pele na direção do movimento' 
-  },
-  warp: { 
     action: 'Selecionar', 
     hint: 'Clique para selecionar • Arraste para mover • Delete para remover' 
   },
-  volume: { 
-    action: 'Volume', 
-    hint: 'Clique para adicionar volume • Shift+clique para remover' 
+  correction_vector: { 
+    action: 'Vetor de Correção', 
+    hint: 'Clique e arraste para indicar direção e magnitude da correção' 
   },
-  incision: { 
-    action: 'Incisão', 
-    hint: 'Clique e arraste para desenhar linha de corte cirúrgico' 
+  intervention_area: { 
+    action: 'Área de Intervenção', 
+    hint: 'Clique para marcar região de intervenção cirúrgica' 
   },
-  suture: { 
-    action: 'Sutura', 
-    hint: 'Clique e arraste para criar linha de pontos de sutura' 
+  surgical_marking: { 
+    action: 'Marcação Cirúrgica', 
+    hint: 'Clique e arraste para desenhar marcações cirúrgicas' 
   },
   annotate: { 
     action: 'Anotar', 

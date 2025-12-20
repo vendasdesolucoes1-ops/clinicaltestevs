@@ -17,23 +17,25 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'Shift+Z', description: 'Refazer' },
   { key: 'Espaço', description: 'Pan (arrastar)' },
   { key: '1', description: 'Selecionar' },
-  { key: '2', description: 'Puxar Pele' },
-  { key: '3', description: 'Volume' },
-  { key: '4', description: 'Incisão' },
-  { key: '5', description: 'Sutura' },
-  { key: '6', description: 'Anotar' },
-  { key: '7', description: 'Borracha' },
+  { key: '2', description: 'Vetor de Correção' },
+  { key: '3', description: 'Área de Intervenção' },
+  { key: '4', description: 'Marcação Cirúrgica' },
+  { key: '5', description: 'Anotar' },
+  { key: '6', description: 'Borracha' },
+  { key: '7', description: 'Medir' },
+  { key: '8', description: 'Ângulo' },
   { key: 'Esc', description: 'Sair da ferramenta' },
 ];
 
 const TOOL_MAP: Record<string, ToolType> = {
   '1': 'select',
-  '2': 'warp',
-  '3': 'volume',
-  '4': 'incision',
-  '5': 'suture',
-  '6': 'annotate',
-  '7': 'eraser',
+  '2': 'correction_vector',
+  '3': 'intervention_area',
+  '4': 'surgical_marking',
+  '5': 'annotate',
+  '6': 'eraser',
+  '7': 'measure',
+  '8': 'angle',
 };
 
 export function useKeyboardShortcuts({
@@ -61,7 +63,7 @@ export function useKeyboardShortcuts({
       return;
     }
 
-    // Tool shortcuts (1-7)
+    // Tool shortcuts (1-8)
     if (TOOL_MAP[e.key]) {
       e.preventDefault();
       onToolChange(TOOL_MAP[e.key]);
