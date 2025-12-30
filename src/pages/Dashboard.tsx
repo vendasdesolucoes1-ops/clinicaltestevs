@@ -157,7 +157,7 @@ export default function Dashboard() {
             .from('clinical_cases')
             .select(`
               id, codename, type, status, created_at,
-              profiles:responsible_id(full_name)
+              profiles:responsible_id(first_name, last_name)
             `)
             .eq('status', 'ativo')
             .order('created_at', { ascending: false })
@@ -199,12 +199,13 @@ export default function Dashboard() {
 
         // Map recent cases
         const recentCases = (casesResult.data || []).slice(0, 5).map((c: any) => {
-          const profile = c.profiles as { full_name: string | null } | null;
+          const profile = c.profiles as { first_name: string | null; last_name: string | null } | null;
+          const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim();
           return {
             id: c.id,
             codename: c.codename,
             type: c.type as 'queimadura' | 'trauma',
-            responsible: profile?.full_name || 'Não atribuído',
+            responsible: fullName || 'Não atribuído',
             versionsCount: versionCounts[c.id] || 0
           };
         });
