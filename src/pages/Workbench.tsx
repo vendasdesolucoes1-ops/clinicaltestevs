@@ -218,9 +218,9 @@ export default function Workbench() {
         // Fetch photos
         const { data: photosData } = await supabase
           .from('case_photos')
-          .select('id, angle, url, storage_path, captured_at')
+          .select('id, angle, url, storage_path, created_at')
           .eq('case_id', id)
-          .order('captured_at', { ascending: true });
+          .order('created_at', { ascending: true });
 
         // Fetch versions
         const { data: versionsData } = await supabase
@@ -242,7 +242,7 @@ export default function Workbench() {
           id: p.id,
           angle: p.angle as CasePhoto['angle'],
           url: p.url,
-          capturedAt: p.captured_at,
+          capturedAt: p.created_at,
         }));
 
         // Map versions to CaseVersion format
@@ -250,7 +250,6 @@ export default function Workbench() {
           id: v.id,
           name: v.name,
           type: v.type as CaseVersion['type'],
-          subVersion: v.sub_version ?? undefined,
           description: v.description || '',
           status: v.status as CaseVersion['status'],
           createdAt: v.created_at,
@@ -259,7 +258,7 @@ export default function Workbench() {
         }));
 
         // Build responsible name
-        const profile = caseRow.profiles as { first_name: string | null; last_name: string | null } | null;
+        const profile = (caseRow as any).profiles as { first_name: string | null; last_name: string | null } | null;
         const responsibleName = profile 
           ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Não atribuído'
           : 'Não atribuído';
@@ -522,7 +521,6 @@ export default function Workbench() {
           case_id: caseData.id,
           name: versionName,
           type,
-          sub_version: subVersion,
           description: `Nova versão ${type}`,
           status: 'pronto',
         })
@@ -535,7 +533,6 @@ export default function Workbench() {
         id: newVersion.id,
         name: newVersion.name,
         type: newVersion.type as CaseVersion['type'],
-        subVersion: newVersion.sub_version ?? undefined,
         description: newVersion.description || '',
         status: 'pronto',
         createdAt: newVersion.created_at,
@@ -571,7 +568,6 @@ export default function Workbench() {
           case_id: caseData.id,
           name: versionName,
           type: version.type,
-          sub_version: subVersion,
           description: `${version.description} (cópia)`,
           status: 'pronto',
         })
@@ -584,7 +580,6 @@ export default function Workbench() {
         id: newVersion.id,
         name: newVersion.name,
         type: newVersion.type as CaseVersion['type'],
-        subVersion: newVersion.sub_version ?? undefined,
         description: newVersion.description || '',
         status: 'pronto',
         createdAt: newVersion.created_at,
@@ -684,7 +679,6 @@ export default function Workbench() {
             id: v.id,
             name: v.name,
             type: v.type as CaseVersion['type'],
-            subVersion: v.sub_version ?? undefined,
             description: v.description || '',
             status: v.status as CaseVersion['status'],
             createdAt: v.created_at,
