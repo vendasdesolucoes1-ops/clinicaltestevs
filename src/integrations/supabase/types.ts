@@ -55,39 +55,42 @@ export type Database = {
           created_at: string
           file_name: string
           file_size: number | null
+          file_url: string
           id: string
           metadata: Json | null
           notes: string | null
           scan_source: string | null
           scan_type: string | null
           storage_path: string
-          url: string
+          uploaded_by: string | null
         }
         Insert: {
           case_id: string
           created_at?: string
           file_name: string
           file_size?: number | null
+          file_url: string
           id?: string
           metadata?: Json | null
           notes?: string | null
           scan_source?: string | null
           scan_type?: string | null
           storage_path: string
-          url: string
+          uploaded_by?: string | null
         }
         Update: {
           case_id?: string
           created_at?: string
           file_name?: string
           file_size?: number | null
+          file_url?: string
           id?: string
           metadata?: Json | null
           notes?: string | null
           scan_source?: string | null
           scan_type?: string | null
           storage_path?: string
-          url?: string
+          uploaded_by?: string | null
         }
         Relationships: [
           {
@@ -95,6 +98,13 @@ export type Database = {
             columns: ["case_id"]
             isOneToOne: false
             referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "case_3d_scans_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -174,36 +184,52 @@ export type Database = {
       }
       case_versions: {
         Row: {
+          author_id: string | null
           canvas_state: Json | null
           case_id: string
           created_at: string
+          description: string | null
           id: string
           name: string
+          status: string | null
           thumbnail_url: string | null
           type: Database["public"]["Enums"]["version_type"]
           updated_at: string
         }
         Insert: {
+          author_id?: string | null
           canvas_state?: Json | null
           case_id: string
           created_at?: string
+          description?: string | null
           id?: string
           name: string
+          status?: string | null
           thumbnail_url?: string | null
           type?: Database["public"]["Enums"]["version_type"]
           updated_at?: string
         }
         Update: {
+          author_id?: string | null
           canvas_state?: Json | null
           case_id?: string
           created_at?: string
+          description?: string | null
           id?: string
           name?: string
+          status?: string | null
           thumbnail_url?: string | null
           type?: Database["public"]["Enums"]["version_type"]
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "case_versions_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "case_versions_case_id_fkey"
             columns: ["case_id"]
@@ -221,11 +247,11 @@ export type Database = {
           created_at: string
           id: string
           notes: string | null
+          responsible_id: string
           status: Database["public"]["Enums"]["case_status"]
           tags: string[] | null
           type: Database["public"]["Enums"]["case_type"]
           updated_at: string
-          user_id: string
         }
         Insert: {
           codename: string
@@ -234,11 +260,11 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          responsible_id: string
           status?: Database["public"]["Enums"]["case_status"]
           tags?: string[] | null
           type?: Database["public"]["Enums"]["case_type"]
           updated_at?: string
-          user_id: string
         }
         Update: {
           codename?: string
@@ -247,11 +273,11 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          responsible_id?: string
           status?: Database["public"]["Enums"]["case_status"]
           tags?: string[] | null
           type?: Database["public"]["Enums"]["case_type"]
           updated_at?: string
-          user_id?: string
         }
         Relationships: []
       }
