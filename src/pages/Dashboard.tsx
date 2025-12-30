@@ -198,7 +198,7 @@ export default function Dashboard() {
         }
 
         // Map recent cases
-        const recentCases = (casesResult.data || []).slice(0, 5).map(c => {
+        const recentCases = (casesResult.data || []).slice(0, 5).map((c: any) => {
           const profile = c.profiles as { first_name: string | null; last_name: string | null } | null;
           return {
             id: c.id,

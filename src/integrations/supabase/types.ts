@@ -279,7 +279,15 @@ export type Database = {
           type?: Database["public"]["Enums"]["case_type"]
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "clinical_cases_responsible_id_fkey"
+            columns: ["responsible_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       facial_analyses: {
         Row: {
