@@ -203,7 +203,7 @@ export default function Workbench() {
           .select(`
             id, codename, type, status, created_at, updated_at,
             tags, notes, consent_registered, consent_date,
-            profiles:responsible_id(full_name)
+            profiles:responsible_id(first_name, last_name)
           `)
           .eq('id', id)
           .maybeSingle();
@@ -258,8 +258,8 @@ export default function Workbench() {
         }));
 
         // Build responsible name
-        const profile = (caseRow as any).profiles as { full_name: string | null } | null;
-        const responsibleName = profile?.full_name || 'Não atribuído';
+        const profile = (caseRow as any).profiles as { first_name: string | null; last_name: string | null } | null;
+        const responsibleName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim() || 'Não atribuído';
 
         // Build ClinicalCase object
         const clinicalCase: ClinicalCase = {

@@ -116,7 +116,7 @@ export default function CaseList() {
       setIsLoading(true);
       const { data, error } = await supabase
         .from('clinical_cases')
-        .select('id, codename, type, status, updated_at, tags, notes, profiles:responsible_id(full_name)')
+        .select('id, codename, type, status, updated_at, tags, notes, profiles:responsible_id(first_name, last_name)')
         .order('updated_at', { ascending: false });
 
       if (error) {
@@ -127,8 +127,8 @@ export default function CaseList() {
       }
 
       const mapped: ClinicalCaseRow[] = (data || []).map((item: any) => {
-        const profile = item.profiles as { full_name: string | null } | null;
-        const fullName = profile?.full_name ?? '';
+        const profile = item.profiles as { first_name: string | null; last_name: string | null } | null;
+        const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim();
 
         return {
           id: item.id,
