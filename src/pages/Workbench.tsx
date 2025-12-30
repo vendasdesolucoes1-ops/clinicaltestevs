@@ -258,10 +258,8 @@ export default function Workbench() {
         }));
 
         // Build responsible name
-        const profile = (caseRow as any).profiles as { first_name: string | null; last_name: string | null } | null;
-        const responsibleName = profile 
-          ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Não atribuído'
-          : 'Não atribuído';
+        const profile = (caseRow as any).profiles as { full_name: string | null } | null;
+        const responsibleName = profile?.full_name || 'Não atribuído';
 
         // Build ClinicalCase object
         const clinicalCase: ClinicalCase = {
