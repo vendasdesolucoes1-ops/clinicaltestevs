@@ -14,16 +14,537 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audit_logs: {
+        Row: {
+          action: string
+          case_id: string | null
+          created_at: string
+          details: Json | null
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          case_id?: string | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          case_id?: string | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      case_3d_scans: {
+        Row: {
+          case_id: string
+          created_at: string
+          file_name: string
+          file_size: number | null
+          id: string
+          metadata: Json | null
+          notes: string | null
+          scan_source: string | null
+          scan_type: string | null
+          storage_path: string
+          url: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          file_name: string
+          file_size?: number | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          scan_source?: string | null
+          scan_type?: string | null
+          storage_path: string
+          url: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          file_name?: string
+          file_size?: number | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          scan_source?: string | null
+          scan_type?: string | null
+          storage_path?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_3d_scans_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      case_exports: {
+        Row: {
+          case_id: string
+          created_at: string
+          file_name: string
+          format: Database["public"]["Enums"]["export_format"]
+          id: string
+          storage_path: string | null
+          user_id: string | null
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          file_name: string
+          format: Database["public"]["Enums"]["export_format"]
+          id?: string
+          storage_path?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          file_name?: string
+          format?: Database["public"]["Enums"]["export_format"]
+          id?: string
+          storage_path?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_exports_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      case_photos: {
+        Row: {
+          angle: Database["public"]["Enums"]["photo_angle"]
+          case_id: string
+          created_at: string
+          id: string
+          storage_path: string
+          url: string
+        }
+        Insert: {
+          angle: Database["public"]["Enums"]["photo_angle"]
+          case_id: string
+          created_at?: string
+          id?: string
+          storage_path: string
+          url: string
+        }
+        Update: {
+          angle?: Database["public"]["Enums"]["photo_angle"]
+          case_id?: string
+          created_at?: string
+          id?: string
+          storage_path?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_photos_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      case_versions: {
+        Row: {
+          canvas_state: Json | null
+          case_id: string
+          created_at: string
+          id: string
+          name: string
+          thumbnail_url: string | null
+          type: Database["public"]["Enums"]["version_type"]
+          updated_at: string
+        }
+        Insert: {
+          canvas_state?: Json | null
+          case_id: string
+          created_at?: string
+          id?: string
+          name: string
+          thumbnail_url?: string | null
+          type?: Database["public"]["Enums"]["version_type"]
+          updated_at?: string
+        }
+        Update: {
+          canvas_state?: Json | null
+          case_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          thumbnail_url?: string | null
+          type?: Database["public"]["Enums"]["version_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_versions_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clinical_cases: {
+        Row: {
+          codename: string
+          consent_date: string | null
+          consent_registered: boolean | null
+          created_at: string
+          id: string
+          notes: string | null
+          status: Database["public"]["Enums"]["case_status"]
+          tags: string[] | null
+          type: Database["public"]["Enums"]["case_type"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          codename: string
+          consent_date?: string | null
+          consent_registered?: boolean | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["case_status"]
+          tags?: string[] | null
+          type?: Database["public"]["Enums"]["case_type"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          codename?: string
+          consent_date?: string | null
+          consent_registered?: boolean | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["case_status"]
+          tags?: string[] | null
+          type?: Database["public"]["Enums"]["case_type"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      facial_analyses: {
+        Row: {
+          case_id: string
+          created_at: string
+          custom_connections: Json | null
+          face_roi: Json | null
+          id: string
+          mesh: Json | null
+          midline_points: string[] | null
+          photo_id: string | null
+          points: Json | null
+          regional_scores: Json | null
+          status: string | null
+          symmetry_score: number | null
+          updated_at: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          custom_connections?: Json | null
+          face_roi?: Json | null
+          id?: string
+          mesh?: Json | null
+          midline_points?: string[] | null
+          photo_id?: string | null
+          points?: Json | null
+          regional_scores?: Json | null
+          status?: string | null
+          symmetry_score?: number | null
+          updated_at?: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          custom_connections?: Json | null
+          face_roi?: Json | null
+          id?: string
+          mesh?: Json | null
+          midline_points?: string[] | null
+          photo_id?: string | null
+          points?: Json | null
+          regional_scores?: Json | null
+          status?: string | null
+          symmetry_score?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facial_analyses_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facial_analyses_photo_id_fkey"
+            columns: ["photo_id"]
+            isOneToOne: false
+            referencedRelation: "case_photos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      facial_analysis_jobs: {
+        Row: {
+          case_id: string
+          error_message: string | null
+          error_stage: string | null
+          id: string
+          image_url: string | null
+          job_id: string
+          photo_id: string | null
+          status: Database["public"]["Enums"]["job_status"]
+          timestamp_end: string | null
+          timestamp_start: string
+        }
+        Insert: {
+          case_id: string
+          error_message?: string | null
+          error_stage?: string | null
+          id?: string
+          image_url?: string | null
+          job_id: string
+          photo_id?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          timestamp_end?: string | null
+          timestamp_start?: string
+        }
+        Update: {
+          case_id?: string
+          error_message?: string | null
+          error_stage?: string | null
+          id?: string
+          image_url?: string | null
+          job_id?: string
+          photo_id?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          timestamp_end?: string | null
+          timestamp_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facial_analysis_jobs_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facial_analysis_jobs_photo_id_fkey"
+            columns: ["photo_id"]
+            isOneToOne: false
+            referencedRelation: "case_photos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          case_id: string | null
+          created_at: string
+          id: string
+          message: string
+          read: boolean
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          case_id?: string | null
+          created_at?: string
+          id?: string
+          message: string
+          read?: boolean
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          case_id?: string | null
+          created_at?: string
+          id?: string
+          message?: string
+          read?: boolean
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          crm: string | null
+          full_name: string | null
+          id: string
+          specialty: string | null
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          crm?: string | null
+          full_name?: string | null
+          id: string
+          specialty?: string | null
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          crm?: string | null
+          full_name?: string | null
+          id?: string
+          specialty?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      simulation_jobs: {
+        Row: {
+          case_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          progress: number | null
+          result_url: string | null
+          status: Database["public"]["Enums"]["simulation_status"]
+          updated_at: string
+          version_id: string | null
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          progress?: number | null
+          result_url?: string | null
+          status?: Database["public"]["Enums"]["simulation_status"]
+          updated_at?: string
+          version_id?: string | null
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          progress?: number | null
+          result_url?: string | null
+          status?: Database["public"]["Enums"]["simulation_status"]
+          updated_at?: string
+          version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simulation_jobs_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "simulation_jobs_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "case_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_case_access: { Args: { _case_id: string }; Returns: boolean }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "cirurgiao" | "residente" | "admin"
+      case_status: "ativo" | "arquivado" | "em_processamento"
+      case_type: "queimadura" | "trauma"
+      export_format: "png" | "jpg" | "pdf"
+      job_status:
+        | "pending"
+        | "processing"
+        | "success"
+        | "failed"
+        | "landmarks_ready"
+        | "mesh_generated"
+        | "symmetry_calculated"
+      photo_angle: "frente" | "perfil_d" | "perfil_e" | "tres_quartos"
+      simulation_status: "processando" | "pronto" | "falhou"
+      version_type: "base" | "A" | "B"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +671,23 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["cirurgiao", "residente", "admin"],
+      case_status: ["ativo", "arquivado", "em_processamento"],
+      case_type: ["queimadura", "trauma"],
+      export_format: ["png", "jpg", "pdf"],
+      job_status: [
+        "pending",
+        "processing",
+        "success",
+        "failed",
+        "landmarks_ready",
+        "mesh_generated",
+        "symmetry_calculated",
+      ],
+      photo_angle: ["frente", "perfil_d", "perfil_e", "tres_quartos"],
+      simulation_status: ["processando", "pronto", "falhou"],
+      version_type: ["base", "A", "B"],
+    },
   },
 } as const
