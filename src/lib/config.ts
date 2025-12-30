@@ -1,10 +1,10 @@
 // Application configuration
 
 // n8n Webhook URL for facial mesh agent (Workbench analysis)
-export const N8N_WEBHOOK_URL = 'https://medico.app.n8n.cloud/webhook/facial-mesh-agent';
+export const N8N_WEBHOOK_URL = 'https://vssolutions-n8n.fjsxhg.easypanel.host/webhook/facial-mesh-agent';
 
 // n8n Webhook URL for facial analysis on case creation
-export const N8N_FACIAL_ANALYSIS_WEBHOOK = 'https://medico.app.n8n.cloud/webhook/facial-analysis';
+export const N8N_FACIAL_ANALYSIS_WEBHOOK = 'https://vssolutions-n8n.fjsxhg.easypanel.host/webhook/facial-analysis';
 
 // Polling interval for checking job status (in milliseconds)
 export const POLLING_INTERVAL_MS = 3000;
