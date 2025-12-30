@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
@@ -19,24 +19,30 @@ export type Database = {
           action: string
           case_id: string | null
           created_at: string
-          details: Json | null
+          description: string | null
           id: string
+          metadata: Json | null
+          photo_id: string | null
           user_id: string | null
         }
         Insert: {
           action: string
           case_id?: string | null
           created_at?: string
-          details?: Json | null
+          description?: string | null
           id?: string
+          metadata?: Json | null
+          photo_id?: string | null
           user_id?: string | null
         }
         Update: {
           action?: string
           case_id?: string | null
           created_at?: string
-          details?: Json | null
+          description?: string | null
           id?: string
+          metadata?: Json | null
+          photo_id?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -45,6 +51,13 @@ export type Database = {
             columns: ["case_id"]
             isOneToOne: false
             referencedRelation: "clinical_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -57,11 +70,11 @@ export type Database = {
           file_size: number | null
           file_url: string
           id: string
-          metadata: Json | null
           notes: string | null
           scan_source: string | null
           scan_type: string | null
-          storage_path: string
+          storage_path: string | null
+          updated_at: string
           uploaded_by: string | null
         }
         Insert: {
@@ -71,11 +84,11 @@ export type Database = {
           file_size?: number | null
           file_url: string
           id?: string
-          metadata?: Json | null
           notes?: string | null
           scan_source?: string | null
           scan_type?: string | null
-          storage_path: string
+          storage_path?: string | null
+          updated_at?: string
           uploaded_by?: string | null
         }
         Update: {
@@ -85,11 +98,11 @@ export type Database = {
           file_size?: number | null
           file_url?: string
           id?: string
-          metadata?: Json | null
           notes?: string | null
           scan_source?: string | null
           scan_type?: string | null
-          storage_path?: string
+          storage_path?: string | null
+          updated_at?: string
           uploaded_by?: string | null
         }
         Relationships: [
@@ -116,8 +129,9 @@ export type Database = {
           file_name: string
           format: Database["public"]["Enums"]["export_format"]
           id: string
+          photo_id: string | null
           storage_path: string | null
-          user_id: string | null
+          version_id: string | null
         }
         Insert: {
           case_id: string
@@ -125,8 +139,9 @@ export type Database = {
           file_name: string
           format: Database["public"]["Enums"]["export_format"]
           id?: string
+          photo_id?: string | null
           storage_path?: string | null
-          user_id?: string | null
+          version_id?: string | null
         }
         Update: {
           case_id?: string
@@ -134,8 +149,9 @@ export type Database = {
           file_name?: string
           format?: Database["public"]["Enums"]["export_format"]
           id?: string
+          photo_id?: string | null
           storage_path?: string | null
-          user_id?: string | null
+          version_id?: string | null
         }
         Relationships: [
           {
@@ -145,31 +161,44 @@ export type Database = {
             referencedRelation: "clinical_cases"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "case_exports_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "case_versions"
+            referencedColumns: ["id"]
+          },
         ]
       }
       case_photos: {
         Row: {
           angle: Database["public"]["Enums"]["photo_angle"]
+          captured_at: string
           case_id: string
           created_at: string
           id: string
-          storage_path: string
+          photo_id: string | null
+          storage_path: string | null
           url: string
         }
         Insert: {
           angle: Database["public"]["Enums"]["photo_angle"]
+          captured_at?: string
           case_id: string
           created_at?: string
           id?: string
-          storage_path: string
+          photo_id?: string | null
+          storage_path?: string | null
           url: string
         }
         Update: {
           angle?: Database["public"]["Enums"]["photo_angle"]
+          captured_at?: string
           case_id?: string
           created_at?: string
           id?: string
-          storage_path?: string
+          photo_id?: string | null
+          storage_path?: string | null
           url?: string
         }
         Relationships: [
@@ -191,7 +220,9 @@ export type Database = {
           description: string | null
           id: string
           name: string
-          status: string | null
+          photo_id: string | null
+          status: Database["public"]["Enums"]["simulation_status"]
+          sub_version: number | null
           thumbnail_url: string | null
           type: Database["public"]["Enums"]["version_type"]
           updated_at: string
@@ -204,7 +235,9 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
-          status?: string | null
+          photo_id?: string | null
+          status?: Database["public"]["Enums"]["simulation_status"]
+          sub_version?: number | null
           thumbnail_url?: string | null
           type?: Database["public"]["Enums"]["version_type"]
           updated_at?: string
@@ -217,7 +250,9 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
-          status?: string | null
+          photo_id?: string | null
+          status?: Database["public"]["Enums"]["simulation_status"]
+          sub_version?: number | null
           thumbnail_url?: string | null
           type?: Database["public"]["Enums"]["version_type"]
           updated_at?: string
@@ -243,11 +278,12 @@ export type Database = {
         Row: {
           codename: string
           consent_date: string | null
-          consent_registered: boolean | null
+          consent_registered: boolean
           created_at: string
           id: string
           notes: string | null
-          responsible_id: string
+          photo_id: string | null
+          responsible_id: string | null
           status: Database["public"]["Enums"]["case_status"]
           tags: string[] | null
           type: Database["public"]["Enums"]["case_type"]
@@ -256,24 +292,26 @@ export type Database = {
         Insert: {
           codename: string
           consent_date?: string | null
-          consent_registered?: boolean | null
+          consent_registered?: boolean
           created_at?: string
           id?: string
           notes?: string | null
-          responsible_id: string
+          photo_id?: string | null
+          responsible_id?: string | null
           status?: Database["public"]["Enums"]["case_status"]
           tags?: string[] | null
-          type?: Database["public"]["Enums"]["case_type"]
+          type: Database["public"]["Enums"]["case_type"]
           updated_at?: string
         }
         Update: {
           codename?: string
           consent_date?: string | null
-          consent_registered?: boolean | null
+          consent_registered?: boolean
           created_at?: string
           id?: string
           notes?: string | null
-          responsible_id?: string
+          photo_id?: string | null
+          responsible_id?: string | null
           status?: Database["public"]["Enums"]["case_status"]
           tags?: string[] | null
           type?: Database["public"]["Enums"]["case_type"]
@@ -292,12 +330,23 @@ export type Database = {
       facial_analyses: {
         Row: {
           case_id: string
+          connections: Json | null
           created_at: string
+          created_by: string | null
           custom_connections: Json | null
+          custom_points: Json | null
           face_roi: Json | null
           id: string
+          image_url: string | null
+          job_id: string | null
+          landmarks: Json | null
+          landmarks_count: Json | null
+          mean_deviation: number | null
           mesh: Json | null
           midline_points: string[] | null
+          midline_x: number | null
+          mode: string | null
+          paired_points: number | null
           photo_id: string | null
           points: Json | null
           regional_scores: Json | null
@@ -307,12 +356,23 @@ export type Database = {
         }
         Insert: {
           case_id: string
+          connections?: Json | null
           created_at?: string
+          created_by?: string | null
           custom_connections?: Json | null
+          custom_points?: Json | null
           face_roi?: Json | null
           id?: string
+          image_url?: string | null
+          job_id?: string | null
+          landmarks?: Json | null
+          landmarks_count?: Json | null
+          mean_deviation?: number | null
           mesh?: Json | null
           midline_points?: string[] | null
+          midline_x?: number | null
+          mode?: string | null
+          paired_points?: number | null
           photo_id?: string | null
           points?: Json | null
           regional_scores?: Json | null
@@ -322,12 +382,23 @@ export type Database = {
         }
         Update: {
           case_id?: string
+          connections?: Json | null
           created_at?: string
+          created_by?: string | null
           custom_connections?: Json | null
+          custom_points?: Json | null
           face_roi?: Json | null
           id?: string
+          image_url?: string | null
+          job_id?: string | null
+          landmarks?: Json | null
+          landmarks_count?: Json | null
+          mean_deviation?: number | null
           mesh?: Json | null
           midline_points?: string[] | null
+          midline_x?: number | null
+          mode?: string | null
+          paired_points?: number | null
           photo_id?: string | null
           points?: Json | null
           regional_scores?: Json | null
@@ -344,6 +415,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "facial_analyses_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "facial_analyses_photo_id_fkey"
             columns: ["photo_id"]
             isOneToOne: false
@@ -355,56 +433,47 @@ export type Database = {
       facial_analysis_jobs: {
         Row: {
           case_id: string
+          created_at: string | null
           error_message: string | null
           error_stage: string | null
-          id: string
-          image_url: string | null
+          image_url: string
           job_id: string
+          landmarks: Json | null
+          landmarks_count: number | null
           photo_id: string | null
-          status: Database["public"]["Enums"]["job_status"]
+          status: string | null
           timestamp_end: string | null
-          timestamp_start: string
+          timestamp_start: string | null
         }
         Insert: {
           case_id: string
+          created_at?: string | null
           error_message?: string | null
           error_stage?: string | null
-          id?: string
-          image_url?: string | null
-          job_id: string
+          image_url: string
+          job_id?: string
+          landmarks?: Json | null
+          landmarks_count?: number | null
           photo_id?: string | null
-          status?: Database["public"]["Enums"]["job_status"]
+          status?: string | null
           timestamp_end?: string | null
-          timestamp_start?: string
+          timestamp_start?: string | null
         }
         Update: {
           case_id?: string
+          created_at?: string | null
           error_message?: string | null
           error_stage?: string | null
-          id?: string
-          image_url?: string | null
+          image_url?: string
           job_id?: string
+          landmarks?: Json | null
+          landmarks_count?: number | null
           photo_id?: string | null
-          status?: Database["public"]["Enums"]["job_status"]
+          status?: string | null
           timestamp_end?: string | null
-          timestamp_start?: string
+          timestamp_start?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "facial_analysis_jobs_case_id_fkey"
-            columns: ["case_id"]
-            isOneToOne: false
-            referencedRelation: "clinical_cases"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "facial_analysis_jobs_photo_id_fkey"
-            columns: ["photo_id"]
-            isOneToOne: false
-            referencedRelation: "case_photos"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       notifications: {
         Row: {
@@ -424,7 +493,7 @@ export type Database = {
           message: string
           read?: boolean
           title: string
-          type?: string
+          type: string
           user_id: string
         }
         Update: {
@@ -451,28 +520,28 @@ export type Database = {
         Row: {
           avatar_url: string | null
           created_at: string
-          crm: string | null
-          full_name: string | null
+          first_name: string | null
           id: string
-          specialty: string | null
+          last_name: string | null
+          photo_id: string | null
           updated_at: string
         }
         Insert: {
           avatar_url?: string | null
           created_at?: string
-          crm?: string | null
-          full_name?: string | null
+          first_name?: string | null
           id: string
-          specialty?: string | null
+          last_name?: string | null
+          photo_id?: string | null
           updated_at?: string
         }
         Update: {
           avatar_url?: string | null
           created_at?: string
-          crm?: string | null
-          full_name?: string | null
+          first_name?: string | null
           id?: string
-          specialty?: string | null
+          last_name?: string | null
+          photo_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -480,36 +549,36 @@ export type Database = {
       simulation_jobs: {
         Row: {
           case_id: string
-          created_at: string
-          error_message: string | null
+          completed_at: string | null
           id: string
-          progress: number | null
-          result_url: string | null
-          status: Database["public"]["Enums"]["simulation_status"]
-          updated_at: string
-          version_id: string | null
+          parameters: Json | null
+          photo_id: string | null
+          progress: number
+          started_at: string
+          status: string
+          version_id: string
         }
         Insert: {
           case_id: string
-          created_at?: string
-          error_message?: string | null
+          completed_at?: string | null
           id?: string
-          progress?: number | null
-          result_url?: string | null
-          status?: Database["public"]["Enums"]["simulation_status"]
-          updated_at?: string
-          version_id?: string | null
+          parameters?: Json | null
+          photo_id?: string | null
+          progress?: number
+          started_at?: string
+          status: string
+          version_id: string
         }
         Update: {
           case_id?: string
-          created_at?: string
-          error_message?: string | null
+          completed_at?: string | null
           id?: string
-          progress?: number | null
-          result_url?: string | null
-          status?: Database["public"]["Enums"]["simulation_status"]
-          updated_at?: string
-          version_id?: string | null
+          parameters?: Json | null
+          photo_id?: string | null
+          progress?: number
+          started_at?: string
+          status?: string
+          version_id?: string
         }
         Relationships: [
           {
@@ -532,18 +601,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          photo_id: string | null
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          photo_id?: string | null
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
+          photo_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
@@ -562,6 +634,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      log_audit: {
+        Args: {
+          _action: string
+          _case_id: string
+          _description?: string
+          _metadata?: Json
+        }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "cirurgiao" | "residente" | "admin"
@@ -571,8 +652,8 @@ export type Database = {
       job_status:
         | "pending"
         | "processing"
-        | "success"
         | "failed"
+        | "success"
         | "landmarks_ready"
         | "mesh_generated"
         | "symmetry_calculated"
@@ -713,8 +794,8 @@ export const Constants = {
       job_status: [
         "pending",
         "processing",
-        "success",
         "failed",
+        "success",
         "landmarks_ready",
         "mesh_generated",
         "symmetry_calculated",
