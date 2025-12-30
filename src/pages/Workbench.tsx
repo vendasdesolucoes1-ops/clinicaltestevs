@@ -203,7 +203,7 @@ export default function Workbench() {
           .select(`
             id, codename, type, status, created_at, updated_at,
             tags, notes, consent_registered, consent_date,
-            profiles:responsible_id(first_name, last_name)
+            profiles:responsible_id(full_name)
           `)
           .eq('id', id)
           .maybeSingle();
