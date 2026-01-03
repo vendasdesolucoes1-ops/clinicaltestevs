@@ -30,6 +30,7 @@ import {
   Crosshair,
   MapPin,
   ClipboardList,
+  Box,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -64,6 +65,7 @@ import { type MeshVisualStyle } from './MediaPipeMeshRenderer';
 import { SymmetryIndicator } from './SymmetryIndicator';
 import { WorkflowProgressPanel } from './WorkflowProgressPanel';
 import { AnalysisHistory } from './AnalysisHistory';
+import { Generate3DButton } from './Generate3DButton';
 import { AnatomicalMeasurementsPanel } from './AnatomicalMeasurements';
 import { 
   CORRECTION_PROCEDURES, 
@@ -135,6 +137,15 @@ interface ToolPanelProps {
   
   // Active points counter
   activePointsCount?: number;
+  
+  // 3D Model generation (Meshy AI)
+  onGenerate3D?: () => void;
+  is3DGenerating?: boolean;
+  generation3DProgress?: number;
+  generation3DStatus?: 'idle' | 'creating' | 'processing' | 'finalizing' | 'completed' | 'error';
+  generation3DError?: string | null;
+  hasExisting3DScan?: boolean;
+  hasImage?: boolean;
 }
 
 // ============= CLINICAL TOOL DEFINITIONS =============
@@ -249,6 +260,14 @@ export function ToolPanel({
   onTriggerMeshAI,
   isMeshAILoading,
   activePointsCount,
+  // 3D Model generation (Meshy AI)
+  onGenerate3D,
+  is3DGenerating,
+  generation3DProgress,
+  generation3DStatus,
+  generation3DError,
+  hasExisting3DScan,
+  hasImage,
 }: ToolPanelProps) {
   const { toolParams, setToolParams } = useCanvasState();
   
@@ -623,6 +642,35 @@ export function ToolPanel({
                 measurements={anatomicalMeasurements}
                 isCalibrated={isCalibrated}
               />
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Modelo 3D (Meshy AI) */}
+          <AccordionItem value="model3d" className="border-b border-border">
+            <AccordionTrigger className="px-3 py-2.5 text-xs">
+              <span className="flex items-center gap-2">
+                <Box className="h-3.5 w-3.5 text-muted-foreground" />
+                Modelo 3D
+                {hasExisting3DScan && (
+                  <span className="ml-auto text-[10px] text-green-600 dark:text-green-400">✓ Disponível</span>
+                )}
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-3 pb-3">
+              <div className="space-y-3">
+                <p className="text-[10px] text-muted-foreground">
+                  Gere um modelo 3D realista a partir da foto do paciente usando Meshy AI.
+                </p>
+                <Generate3DButton
+                  isGenerating={is3DGenerating || false}
+                  progress={generation3DProgress || 0}
+                  status={generation3DStatus || 'idle'}
+                  error={generation3DError || null}
+                  hasExistingScan={hasExisting3DScan || false}
+                  hasImage={hasImage !== false}
+                  onGenerate={onGenerate3D || (() => {})}
+                />
+              </div>
             </AccordionContent>
           </AccordionItem>
 
