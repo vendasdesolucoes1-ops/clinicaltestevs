@@ -2,14 +2,11 @@
 import { Link } from 'react-router-dom';
 import { 
   ChevronRight, 
-  Loader2, 
-  Scan, 
   Image, 
   CheckCircle2,
   Layers,
   Box,
   GitCompare,
-  HelpCircle,
   Keyboard
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -46,8 +43,6 @@ interface WorkbenchHeaderProps {
   currentImageUrl: string;
   onPhotoSelect: (url: string, photo: CasePhoto) => void;
   analyzedPhotoIds: Set<string>;
-  isAnalyzing: boolean;
-  onTriggerAnalysis: () => void;
   canCompare: boolean;
 }
 
@@ -68,8 +63,6 @@ export function WorkbenchHeader({
   currentImageUrl,
   onPhotoSelect,
   analyzedPhotoIds,
-  isAnalyzing,
-  onTriggerAnalysis,
   canCompare,
 }: WorkbenchHeaderProps) {
   return (
@@ -141,33 +134,6 @@ export function WorkbenchHeader({
           </Tooltip>
         )}
 
-        {/* Generate Analysis Button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="default"
-              size="sm"
-              className="gap-2"
-              disabled={!currentImageUrl || currentImageUrl === '/placeholder.svg' || isAnalyzing}
-              onClick={onTriggerAnalysis}
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Analisando...
-                </>
-              ) : (
-                <>
-                  <Scan className="h-4 w-4" />
-                  Gerar Análise
-                </>
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            Envia a foto para processamento de landmarks faciais via IA
-          </TooltipContent>
-        </Tooltip>
 
         {/* View Mode Tabs */}
         <Tabs value={viewMode} onValueChange={(v) => onViewModeChange(v as ViewMode)}>

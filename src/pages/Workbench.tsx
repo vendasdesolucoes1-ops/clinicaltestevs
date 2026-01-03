@@ -4,9 +4,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Loader2,
   FolderOpen,
-  Wrench
+  Wrench,
+  Box,
+  Sparkles
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import { VersionPanel } from '@/components/workbench/VersionPanel';
 import { ToolPanel, type ToolType } from '@/components/workbench/ToolPanel';
 import { SimulationCanvas, SimulationCanvasRef } from '@/components/workbench/SimulationCanvas';
@@ -828,8 +831,6 @@ export default function Workbench() {
           currentImageUrl={currentImageUrl}
           onPhotoSelect={handlePhotoSelect}
           analyzedPhotoIds={analyzedPhotoIds}
-          isAnalyzing={isAnalyzing}
-          onTriggerAnalysis={() => triggerAnalysis(caseData.id, currentImageUrl, currentPhotoId)}
           canCompare={versionsA.length > 0 || versionsB.length > 0}
         />
 
@@ -879,20 +880,61 @@ export default function Workbench() {
           )}
           
           {viewMode === '3d' && (
-            active3DScan ? (
-              <PatientModelViewer
-                modelUrl={active3DScan.file_url}
-                landmarks2D={mediaPipeMeshData?.points?.map(p => ({ x: p.x, y: p.y, z: p.z }))}
-                connections={mediaPipeMeshData?.connections}
-                landmarkVisualStyle={mediaPipeMeshVisualStyle}
-              />
-            ) : (
-              <Viewer3D 
-                modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
-                imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
-                isProcessing={isN8nProcessing || is3DGenerating}
-              />
-            )
+            <>
+              {active3DScan ? (
+                <PatientModelViewer
+                  modelUrl={active3DScan.file_url}
+                  landmarks2D={mediaPipeMeshData?.points?.map(p => ({ x: p.x, y: p.y, z: p.z }))}
+                  connections={mediaPipeMeshData?.connections}
+                  landmarkVisualStyle={mediaPipeMeshVisualStyle}
+                />
+              ) : (
+                <Viewer3D 
+                  modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
+                  imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
+                  isProcessing={isN8nProcessing || is3DGenerating}
+                />
+              )}
+              
+              {/* 3D Generation CTA Overlay */}
+              {!active3DScan && !is3DGenerating && currentImageUrl !== '/placeholder.svg' && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-10">
+                  <div className="text-center space-y-4 p-8 rounded-xl bg-card border border-border shadow-2xl max-w-sm">
+                    <Box className="h-12 w-12 mx-auto text-muted-foreground" />
+                    <h3 className="text-lg font-semibold text-foreground">Nenhum Modelo 3D</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Gere um modelo 3D realista a partir da foto do paciente usando inteligência artificial
+                    </p>
+                    <Button onClick={handleGenerate3D} size="lg" className="gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      Gerar Modelo 3D com IA
+                    </Button>
+                  </div>
+                </div>
+              )}
+              
+              {/* 3D Generation Progress Overlay */}
+              {is3DGenerating && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-10">
+                  <div className="text-center space-y-4 p-8 rounded-xl bg-card border border-border shadow-2xl max-w-sm">
+                    <Loader2 className="h-12 w-12 mx-auto text-primary animate-spin" />
+                    <h3 className="text-lg font-semibold text-foreground">Gerando Modelo 3D...</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {generation3DStatus === 'creating' && 'Enviando para processamento...'}
+                      {generation3DStatus === 'processing' && `Progresso: ${generation3DProgress}%`}
+                      {generation3DStatus === 'finalizing' && 'Finalizando...'}
+                      {generation3DStatus === 'completed' && 'Concluído!'}
+                    </p>
+                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="h-full bg-primary transition-all duration-300 ease-out"
+                        style={{ width: `${generation3DProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
           
           {viewMode === 'compare' && (
