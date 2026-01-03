@@ -11,8 +11,6 @@ import { VersionPanel } from '@/components/workbench/VersionPanel';
 import { ToolPanel, type ToolType } from '@/components/workbench/ToolPanel';
 import { SimulationCanvas, SimulationCanvasRef } from '@/components/workbench/SimulationCanvas';
 import { Viewer3D } from '@/components/workbench/Viewer3D';
-import FaceMesh3D from '@/components/workbench/FaceMesh3D';
-import HybridFaceMesh3D from '@/components/workbench/HybridFaceMesh3D';
 import { PatientModelViewer } from '@/components/workbench/PatientModelViewer';
 import { Model3DUpload } from '@/components/workbench/Model3DUpload';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
@@ -30,6 +28,7 @@ import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
 import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
 import { useCase3DScans } from '@/hooks/useCase3DScans';
 import { useMeshRecommendation } from '@/hooks/useMeshRecommendation';
+import { useMeshy3D } from '@/hooks/useMeshy3D';
 import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { toast } from 'sonner';
@@ -135,6 +134,31 @@ export default function Workbench() {
   } = useMeshRecommendation();
   
   const [showMeshAIModal, setShowMeshAIModal] = useState(false);
+
+  // Fetch scans function exposed from useCase3DScans
+  const fetchScans = useCallback(async () => {
+    if (!id) return;
+    const { data } = await supabase
+      .from('case_3d_scans')
+      .select('*')
+      .eq('case_id', id)
+      .order('created_at', { ascending: false });
+    if (data && data.length > 0) {
+      setActive3DScan(data[0] as any);
+    }
+  }, [id, setActive3DScan]);
+
+  // Meshy AI 3D model generation
+  const {
+    isGenerating: is3DGenerating,
+    progress: generation3DProgress,
+    status: generation3DStatus,
+    error: generation3DError,
+    generateModel: generateMeshy3D,
+  } = useMeshy3D(() => {
+    // When a new scan is generated, refresh the scans list
+    fetchScans();
+  });
 
   // Use MediaPipe mesh from n8n or standalone hook
   const mediaPipeMeshData = n8nMediaPipeMeshData || standaloneMediaPipeMeshData;
@@ -728,6 +752,15 @@ export default function Workbench() {
     }
   }, [analyzedPhotoIds, clearMesh, loadExistingAnalysis]);
 
+  // Handle 3D model generation with Meshy AI
+  const handleGenerate3D = useCallback(() => {
+    if (!id || !currentImageUrl || currentImageUrl === '/placeholder.svg') {
+      toast.error('Selecione uma foto antes de gerar o modelo 3D');
+      return;
+    }
+    generateMeshy3D(currentImageUrl, id);
+  }, [id, currentImageUrl, generateMeshy3D]);
+
   if (isLoading) {
     return (
       <div className="h-[calc(100vh-3.5rem)] flex">
@@ -849,23 +882,15 @@ export default function Workbench() {
             active3DScan ? (
               <PatientModelViewer
                 modelUrl={active3DScan.file_url}
-                // Pass MediaPipe landmarks if available for projection onto 3D scan
                 landmarks2D={mediaPipeMeshData?.points?.map(p => ({ x: p.x, y: p.y, z: p.z }))}
                 connections={mediaPipeMeshData?.connections}
                 landmarkVisualStyle={mediaPipeMeshVisualStyle}
-              />
-            ) : mesh3DData.landmarks.length > 0 ? (
-              <HybridFaceMesh3D
-                landmarks={mesh3DData.landmarks}
-                imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
-                wireframe={false}
-                opacity={meshOpacity / 100}
               />
             ) : (
               <Viewer3D 
                 modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
                 imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
-                isProcessing={isN8nProcessing}
+                isProcessing={isN8nProcessing || is3DGenerating}
               />
             )
           )}
@@ -945,6 +970,14 @@ export default function Workbench() {
             onTriggerMeshAI={handleTriggerMeshAI}
             isMeshAILoading={isMeshAILoading}
             activePointsCount={activePointsCount}
+            // 3D Model generation (Meshy AI)
+            onGenerate3D={handleGenerate3D}
+            is3DGenerating={is3DGenerating}
+            generation3DProgress={generation3DProgress}
+            generation3DStatus={generation3DStatus}
+            generation3DError={generation3DError}
+            hasExisting3DScan={!!active3DScan}
+            hasImage={currentImageUrl !== '/placeholder.svg'}
           />
         </div>
       </CollapsiblePanel>

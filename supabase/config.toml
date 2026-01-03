@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.recommend-mesh-density]
 verify_jwt = false
+
+[functions.generate-3d-model]
+verify_jwt = false
