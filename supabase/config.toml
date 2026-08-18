@@ -1,13 +1,1 @@
-project_id = "wxmcwzpgqbsqwetrhqit"
-
-[functions.analyze-face]
-verify_jwt = false
-
-[functions.webhook-n8n-notification]
-verify_jwt = false
-
-[functions.recommend-mesh-density]
-verify_jwt = false
-
-[functions.generate-3d-model]
-verify_jwt = false
+project_id = "kekxxyqkrlmajkndwboj"
