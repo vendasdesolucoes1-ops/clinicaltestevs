@@ -9,5 +9,5 @@ export const N8N_FACIAL_ANALYSIS_WEBHOOK = 'https://vssolutions-n8n.fjsxhg.easyp
 // Polling interval for checking job status (in milliseconds)
 export const POLLING_INTERVAL_MS = 3000;
 
-// Maximum polling attempts before timing out (20 attempts * 3s = 1 minute)
-export const MAX_POLLING_ATTEMPTS = 20;
+// Maximum polling attempts before timing out (60 attempts * 3s = 3 minutes)
+export const MAX_POLLING_ATTEMPTS = 60;

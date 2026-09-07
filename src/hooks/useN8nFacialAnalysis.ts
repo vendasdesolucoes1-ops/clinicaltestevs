@@ -54,6 +54,17 @@ interface UseN8nFacialAnalysisReturn {
   setMeshDensity: (density: MeshDensity) => void;
 }
 
+// Normalize job status coming from n8n (tolerates misspellings like "sucess")
+const SUCCESS_STATUSES = ['success', 'sucess', 'succes', 'sucesso', 'ok', 'done', 'completed', 'complete', 'concluido', 'pronto'];
+const FAILED_STATUSES = ['failed', 'fail', 'falhou', 'error', 'erro'];
+
+function normalizeJobStatus(raw?: string | null): AnalysisJobStatus {
+  const s = (raw || '').toLowerCase().trim();
+  if (SUCCESS_STATUSES.includes(s)) return 'completed';
+  if (FAILED_STATUSES.includes(s)) return 'failed';
+  return 'processing';
+}
+
 export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
   const [meshData, setMeshData] = useState<FacialMeshData | null>(null);
@@ -69,6 +80,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   const lastPhotoIdRef = useRef<string | undefined>(undefined);
   const targetVersionRef = useRef<'A' | 'B' | null>(null);
   const isSimulationModeRef = useRef(false);
+  const currentJobIdRef = useRef<string | null>(null);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -143,14 +155,19 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
 
   // Poll for job status
   const pollJobStatus = useCallback(async (caseId: string, photoId?: string) => {
-    console.log('[Polling] Checking job status for case:', caseId, 'photo:', photoId);
-    
-    const { data, error } = await supabase
+    const jobId = currentJobIdRef.current;
+    console.log('[Polling] Checking job status. job:', jobId, 'case:', caseId, 'photo:', photoId);
+
+    let query = supabase
       .from('facial_analysis_jobs')
-      .select('status, error_message, error_stage, job_id, timestamp_start')
-      .eq('case_id', caseId)
-      .order('timestamp_start', { ascending: false })
-      .limit(1);
+      .select('status, error_message, error_stage, job_id, timestamp_start');
+
+    // Prefer the job this session created, so old rows can't confuse us
+    query = jobId
+      ? query.eq('job_id', jobId)
+      : query.eq('case_id', caseId).order('timestamp_start', { ascending: false });
+
+    const { data, error } = await query.limit(1);
 
     if (error) {
       console.error('[Polling] Error checking status:', error);
@@ -161,16 +178,8 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
 
     if (data && data.length > 0) {
       const job = data[0];
-      // Normalize status - handle both English and Portuguese
-      let status: AnalysisJobStatus = 'processing';
       const rawStatus = job.status?.toLowerCase();
-      if (rawStatus === 'success' || rawStatus === 'completed' || rawStatus === 'pronto') {
-        status = 'completed';
-      } else if (rawStatus === 'failed' || rawStatus === 'falhou') {
-        status = 'failed';
-      } else if (rawStatus === 'processing' || rawStatus === 'processando' || rawStatus === 'pending') {
-        status = 'processing';
-      }
+      const status = normalizeJobStatus(job.status);
 
       console.log('[Polling] Normalized status:', rawStatus, '->', status);
 
@@ -300,9 +309,30 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       lastImageUrlRef.current = imageUrl;
       lastPhotoIdRef.current = photoId;
 
-      // Set initial job state (sem job_id - será gerado pelo backend)
+      // Create the job row ourselves so polling tracks THIS request
+      currentJobIdRef.current = null;
+      const { data: createdJob, error: createJobError } = await supabase
+        .from('facial_analysis_jobs')
+        .insert({
+          case_id: caseId,
+          photo_id: photoId ?? null,
+          image_url: imageUrl,
+          status: 'pending',
+        })
+        .select('job_id')
+        .maybeSingle();
+
+      if (createJobError) {
+        console.error('[Analysis] Could not create job row:', createJobError);
+      } else if (createdJob?.job_id) {
+        currentJobIdRef.current = createdJob.job_id;
+        console.log('[Analysis] Job created:', createdJob.job_id);
+      }
+
+      // Set initial job state
       setAnalysisJob({
         caseId,
+        jobId: currentJobIdRef.current ?? undefined,
         status: 'processing',
         startedAt: new Date().toISOString(),
       });
@@ -316,21 +346,24 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
         description: 'O processamento será feito em segundo plano.'
       });
 
+      const payload = {
+        job_id: currentJobIdRef.current,
+        case_id: caseId,
+        photo_id: photoId,
+        image_url: imageUrl,
+        mode: 'clinical',
+      };
+
       // Send POST to n8n webhook
       console.log('[Analysis] Sending to n8n webhook:', N8N_FACIAL_ANALYSIS_WEBHOOK);
-      console.log('[Analysis] Payload:', { case_id: caseId, photo_id: photoId, image_url: imageUrl, mode: 'clinical' });
-      
+      console.log('[Analysis] Payload:', payload);
+
       const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          case_id: caseId,
-          photo_id: photoId,
-          image_url: imageUrl,
-          mode: "clinical",
-        }),
+        body: JSON.stringify(payload),
       });
 
       console.log('[Analysis] Response status:', response.status);
@@ -338,13 +371,17 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[Analysis] Error response:', errorText);
+        const isNotRegistered = response.status === 404;
+        const errorMessage = isNotRegistered
+          ? 'Fluxo n8n indisponível ou inativo (404). Ative o workflow no n8n e tente novamente.'
+          : `Falha de processamento: ${response.status}`;
         setAnalysisJob(prev => prev ? {
           ...prev,
           status: 'failed',
-          errorMessage: `Falha de processamento: ${response.status}`,
+          errorMessage,
         } : null);
-        toast.error('Falha de processamento', {
-          description: 'Não foi possível iniciar a análise facial.'
+        toast.error(isNotRegistered ? 'Fluxo n8n inativo' : 'Falha de processamento', {
+          description: errorMessage,
         });
         return;
       }
@@ -362,7 +399,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
           console.log('[Analysis] points present:', !!responseData.points);
           
           // Check if status indicates success
-          const isSuccess = responseData.status === 'success' || responseData.status === 'completed';
+          const isSuccess = normalizeJobStatus(responseData.status) === 'completed';
           
           // Try to extract mesh data from various formats
           let meshPoints: MediaPipePoint[] | null = null;
@@ -478,6 +515,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     setAnalysisJob(null);
     isSimulationModeRef.current = false;
     targetVersionRef.current = null;
+    currentJobIdRef.current = null;
     toast.info('Análise cancelada', {
       description: 'O processamento foi interrompido pelo usuário.'
     });
@@ -492,6 +530,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     setFaceROI(null);
     isSimulationModeRef.current = false;
     targetVersionRef.current = null;
+    currentJobIdRef.current = null;
   }, [stopPolling]);
 
   // Clear created version state

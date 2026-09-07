@@ -66,7 +66,14 @@ interface WebhookPayload {
 function normalizeStatus(status: string): 'pending' | 'processing' | 'success' | 'failed' {
   const statusMap: Record<string, 'pending' | 'processing' | 'success' | 'failed'> = {
     'success': 'success',
+    'sucess': 'success',
+    'succes': 'success',
+    'sucesso': 'success',
+    'ok': 'success',
+    'done': 'success',
     'completed': 'success',
+    'complete': 'success',
+    'concluido': 'success',
     'pronto': 'success',
     'failed': 'failed',
     'falhou': 'failed',
