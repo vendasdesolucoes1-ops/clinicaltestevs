@@ -309,9 +309,30 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       lastImageUrlRef.current = imageUrl;
       lastPhotoIdRef.current = photoId;
 
-      // Set initial job state (sem job_id - será gerado pelo backend)
+      // Create the job row ourselves so polling tracks THIS request
+      currentJobIdRef.current = null;
+      const { data: createdJob, error: createJobError } = await supabase
+        .from('facial_analysis_jobs')
+        .insert({
+          case_id: caseId,
+          photo_id: photoId ?? null,
+          image_url: imageUrl,
+          status: 'pending',
+        })
+        .select('job_id')
+        .maybeSingle();
+
+      if (createJobError) {
+        console.error('[Analysis] Could not create job row:', createJobError);
+      } else if (createdJob?.job_id) {
+        currentJobIdRef.current = createdJob.job_id;
+        console.log('[Analysis] Job created:', createdJob.job_id);
+      }
+
+      // Set initial job state
       setAnalysisJob({
         caseId,
+        jobId: currentJobIdRef.current ?? undefined,
         status: 'processing',
         startedAt: new Date().toISOString(),
       });
@@ -325,21 +346,24 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
         description: 'O processamento será feito em segundo plano.'
       });
 
+      const payload = {
+        job_id: currentJobIdRef.current,
+        case_id: caseId,
+        photo_id: photoId,
+        image_url: imageUrl,
+        mode: 'clinical',
+      };
+
       // Send POST to n8n webhook
       console.log('[Analysis] Sending to n8n webhook:', N8N_FACIAL_ANALYSIS_WEBHOOK);
-      console.log('[Analysis] Payload:', { case_id: caseId, photo_id: photoId, image_url: imageUrl, mode: 'clinical' });
-      
+      console.log('[Analysis] Payload:', payload);
+
       const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          case_id: caseId,
-          photo_id: photoId,
-          image_url: imageUrl,
-          mode: "clinical",
-        }),
+        body: JSON.stringify(payload),
       });
 
       console.log('[Analysis] Response status:', response.status);
@@ -347,13 +371,17 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[Analysis] Error response:', errorText);
+        const isNotRegistered = response.status === 404;
+        const errorMessage = isNotRegistered
+          ? 'Fluxo n8n indisponível ou inativo (404). Ative o workflow no n8n e tente novamente.'
+          : `Falha de processamento: ${response.status}`;
         setAnalysisJob(prev => prev ? {
           ...prev,
           status: 'failed',
-          errorMessage: `Falha de processamento: ${response.status}`,
+          errorMessage,
         } : null);
-        toast.error('Falha de processamento', {
-          description: 'Não foi possível iniciar a análise facial.'
+        toast.error(isNotRegistered ? 'Fluxo n8n inativo' : 'Falha de processamento', {
+          description: errorMessage,
         });
         return;
       }
