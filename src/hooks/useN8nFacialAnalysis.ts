@@ -399,7 +399,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
           console.log('[Analysis] points present:', !!responseData.points);
           
           // Check if status indicates success
-          const isSuccess = responseData.status === 'success' || responseData.status === 'completed';
+          const isSuccess = normalizeJobStatus(responseData.status) === 'completed';
           
           // Try to extract mesh data from various formats
           let meshPoints: MediaPipePoint[] | null = null;
