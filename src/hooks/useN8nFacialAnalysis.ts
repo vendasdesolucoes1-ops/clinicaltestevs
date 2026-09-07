@@ -154,14 +154,19 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
 
   // Poll for job status
   const pollJobStatus = useCallback(async (caseId: string, photoId?: string) => {
-    console.log('[Polling] Checking job status for case:', caseId, 'photo:', photoId);
-    
-    const { data, error } = await supabase
+    const jobId = currentJobIdRef.current;
+    console.log('[Polling] Checking job status. job:', jobId, 'case:', caseId, 'photo:', photoId);
+
+    let query = supabase
       .from('facial_analysis_jobs')
-      .select('status, error_message, error_stage, job_id, timestamp_start')
-      .eq('case_id', caseId)
-      .order('timestamp_start', { ascending: false })
-      .limit(1);
+      .select('status, error_message, error_stage, job_id, timestamp_start');
+
+    // Prefer the job this session created, so old rows can't confuse us
+    query = jobId
+      ? query.eq('job_id', jobId)
+      : query.eq('case_id', caseId).order('timestamp_start', { ascending: false });
+
+    const { data, error } = await query.limit(1);
 
     if (error) {
       console.error('[Polling] Error checking status:', error);
@@ -172,16 +177,8 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
 
     if (data && data.length > 0) {
       const job = data[0];
-      // Normalize status - handle both English and Portuguese
-      let status: AnalysisJobStatus = 'processing';
       const rawStatus = job.status?.toLowerCase();
-      if (rawStatus === 'success' || rawStatus === 'completed' || rawStatus === 'pronto') {
-        status = 'completed';
-      } else if (rawStatus === 'failed' || rawStatus === 'falhou') {
-        status = 'failed';
-      } else if (rawStatus === 'processing' || rawStatus === 'processando' || rawStatus === 'pending') {
-        status = 'processing';
-      }
+      const status = normalizeJobStatus(job.status);
 
       console.log('[Polling] Normalized status:', rawStatus, '->', status);
 
