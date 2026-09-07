@@ -515,6 +515,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     setAnalysisJob(null);
     isSimulationModeRef.current = false;
     targetVersionRef.current = null;
+    currentJobIdRef.current = null;
     toast.info('Análise cancelada', {
       description: 'O processamento foi interrompido pelo usuário.'
     });
@@ -529,6 +530,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
     setFaceROI(null);
     isSimulationModeRef.current = false;
     targetVersionRef.current = null;
+    currentJobIdRef.current = null;
   }, [stopPolling]);
 
   // Clear created version state
