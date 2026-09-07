@@ -80,6 +80,7 @@ export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   const lastPhotoIdRef = useRef<string | undefined>(undefined);
   const targetVersionRef = useRef<'A' | 'B' | null>(null);
   const isSimulationModeRef = useRef(false);
+  const currentJobIdRef = useRef<string | null>(null);
 
   // Cleanup polling on unmount
   useEffect(() => {
