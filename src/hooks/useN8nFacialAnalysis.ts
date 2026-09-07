@@ -54,6 +54,17 @@ interface UseN8nFacialAnalysisReturn {
   setMeshDensity: (density: MeshDensity) => void;
 }
 
+// Normalize job status coming from n8n (tolerates misspellings like "sucess")
+const SUCCESS_STATUSES = ['success', 'sucess', 'succes', 'sucesso', 'ok', 'done', 'completed', 'complete', 'concluido', 'pronto'];
+const FAILED_STATUSES = ['failed', 'fail', 'falhou', 'error', 'erro'];
+
+function normalizeJobStatus(raw?: string | null): AnalysisJobStatus {
+  const s = (raw || '').toLowerCase().trim();
+  if (SUCCESS_STATUSES.includes(s)) return 'completed';
+  if (FAILED_STATUSES.includes(s)) return 'failed';
+  return 'processing';
+}
+
 export const useN8nFacialAnalysis = (): UseN8nFacialAnalysisReturn => {
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
   const [meshData, setMeshData] = useState<FacialMeshData | null>(null);
