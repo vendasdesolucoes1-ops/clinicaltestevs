@@ -643,6 +643,7 @@ export type Database = {
         }
         Returns: string
       }
+      storage_object_case_id: { Args: { object_name: string }; Returns: string }
     }
     Enums: {
       app_role: "cirurgiao" | "residente" | "admin"
