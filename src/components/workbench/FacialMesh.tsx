@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
-import { FacialMeshData, FacialPoint, POINT_LABELS, REGION_COLORS, AnatomicalRegion } from '@/types/facialLandmarks';
+import { FacialMeshData, FacialPoint, POINT_LABELS, REGION_COLORS, AnatomicalRegion, LOW_CONFIDENCE_THRESHOLD } from '@/types/facialLandmarks';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 
 interface FacialMeshProps {
@@ -33,6 +33,8 @@ const CUSTOM_CONNECTION_COLOR = 'rgba(255, 150, 50, 0.9)';
 const POINT_STROKE = '#ffffff';
 const CUSTOM_POINT_COLOR = '#ff6b6b';
 const CONNECTING_POINT_COLOR = '#ffff00';
+// AI-1: landmark que o detector marcou como incerto — sinaliza revisão manual.
+const LOW_CONFIDENCE_COLOR = '#ff9500';
 const ROI_BORDER_COLOR = 'rgba(0, 200, 255, 0.3)';
 
 export const FacialMesh = ({
@@ -89,7 +91,13 @@ export const FacialMesh = ({
   const getPointColor = (point: FacialPoint, isConnecting: boolean): string => {
     if (isConnecting) return CONNECTING_POINT_COLOR;
     if (point.id.startsWith('custom_')) return CUSTOM_POINT_COLOR;
-    
+
+    // Confiança baixa tem precedência sobre a cor da região: o cirurgião precisa ver
+    // quais pontos merecem conferência. Pontos sem escore mantêm a cor da região.
+    if (typeof point.confidence === 'number' && point.confidence < LOW_CONFIDENCE_THRESHOLD) {
+      return LOW_CONFIDENCE_COLOR;
+    }
+
     // Cor baseada na região anatômica
     const region = point.region as AnatomicalRegion;
     return REGION_COLORS[region] || '#00c8ff';

@@ -74,8 +74,14 @@ export interface FacialPoint {
   y: number; // 0-1 normalized
   region: AnatomicalRegion;
   adjacentRegions?: AnatomicalRegion[];
+  // AI-1: confiança do detector neste ponto (0-1). `undefined` = escore não informado
+  // (ex.: landmarks vindos do pipeline n8n), que não é o mesmo que confiança baixa.
+  confidence?: number;
   category?: 'forehead' | 'eyebrows' | 'eyes' | 'nose' | 'mouth' | 'chin' | 'contour' | 'cheeks' | 'ears'; // legacy
 }
+
+// Abaixo deste valor o ponto é sinalizado na interface para revisão manual do cirurgião.
+export const LOW_CONFIDENCE_THRESHOLD = 0.6;
 
 export interface FacialConnection {
   from: string;

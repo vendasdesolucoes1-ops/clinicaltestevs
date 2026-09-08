@@ -115,6 +115,8 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
       setMidlinePoints(midline);
 
       // Converter pontos garantindo que tenham região anatômica
+      // O mapeamento é campo a campo: qualquer campo novo vindo da edge function precisa
+      // ser adicionado aqui, senão é descartado silenciosamente.
       const detectedPoints: FacialPoint[] = data.points.map((p: any) => ({
         id: p.id,
         name: p.name || p.id,
@@ -122,6 +124,7 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
         y: p.y,
         region: p.region || inferRegionFromId(p.id),
         adjacentRegions: p.adjacentRegions || [],
+        confidence: typeof p.confidence === 'number' ? p.confidence : undefined,
       }));
       
       setPoints(detectedPoints);

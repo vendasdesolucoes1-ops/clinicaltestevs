@@ -529,6 +529,16 @@ export default function Workbench() {
     });
   }, [currentImageUrl, currentPhotoId, caseData, getMeshRecommendation]);
 
+  // AI-1: análise direta pela edge function `analyze-face` (Gemini). Caminho
+  // independente do fluxo n8n disparado na criação do caso — os dois coexistem.
+  const handleAnalyzeDirect = useCallback(async () => {
+    if (!currentImageUrl) {
+      toast.error('Selecione uma foto primeiro');
+      return;
+    }
+    await analyzeImage(currentImageUrl);
+  }, [currentImageUrl, analyzeImage]);
+
   const handleApplyMeshRecommendation = useCallback((density: MeshDensity) => {
     setMeshDensity(density);
     setMediaPipeMeshDensity(density);
@@ -1022,6 +1032,7 @@ export default function Workbench() {
             caseName={caseData?.codename}
             currentPhotoAngle={caseData?.photos.find((p) => p.id === currentPhotoId)?.angle}
             onTriggerMeshAI={handleTriggerMeshAI}
+            onAnalyzeDirect={handleAnalyzeDirect}
             isMeshAILoading={isMeshAILoading}
             activePointsCount={activePointsCount}
             // 3D Model generation (Meshy AI)
