@@ -22,6 +22,16 @@ import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
 import { CollapsiblePanel } from '@/components/workbench/CollapsiblePanel';
 import { WorkbenchHeader } from '@/components/workbench/WorkbenchHeader';
 import { MeshRecommendationModal } from '@/components/workbench/MeshRecommendationModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
@@ -36,9 +46,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { resolveSignedUrl, resolveSignedUrls } from '@/lib/storageUrls';
 import { renderExport } from '@/lib/exportImage';
+import {
+  parseVersionState,
+  serializeVersionState,
+  versionStatesEqual,
+  type VersionState,
+} from '@/lib/versionState';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { toast } from 'sonner';
 import { getFaceTessellation } from '@/types/mediapipeTessellation';
+import { warpFace } from '@/lib/faceWarp';
 import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
 import type { MediaPipeMeshData } from '@/types/mediapipeMesh';
 import { isLandmarkVisible } from '@/types/mediapipeMeshPresets';
@@ -91,7 +108,6 @@ export default function Workbench() {
     objects,
     undoStack,
     redoStack,
-    saveVersion,
   } = useCanvasState();
 
   // Local facial analysis (for manual/fallback use)
@@ -143,6 +159,7 @@ export default function Workbench() {
     setIntensity: setWarpIntensity,
     pull: pullSkin,
     commitStroke: commitWarpStroke,
+    loadState: loadWarpState,
     canUndo: canUndoWarp,
     canRedo: canRedoWarp,
     undo: undoWarp,
@@ -344,6 +361,8 @@ export default function Workbench() {
           createdAt: v.created_at,
           author: 'Autor', // TODO: fetch author name from profiles
           thumbnailUrl: v.thumbnail_url ?? undefined,
+          canvasState: v.canvas_state,
+          photoId: v.photo_id ?? undefined,
         }));
 
         // Build responsible name
@@ -638,6 +657,11 @@ export default function Workbench() {
 
       if (error) throw error;
 
+      // A versão nasce com o que está na tela: é isso que a torna um estado, e não um
+      // rótulo. Sem isso, "Nova versão A" e "Nova versão B" eram indistinguíveis.
+      const capturedState = captureVersionState();
+      await persistVersionState(newVersion.id, capturedState, currentPhotoId);
+
       const version: CaseVersion = {
         id: newVersion.id,
         name: newVersion.name,
@@ -646,6 +670,7 @@ export default function Workbench() {
         status: 'pronto',
         createdAt: newVersion.created_at,
         author: caseData.responsible,
+        canvasState: serializeVersionState(capturedState),
       };
 
       setCaseData(prev => prev ? {
@@ -653,11 +678,12 @@ export default function Workbench() {
         versions: [...prev.versions, version],
       } : null);
       setSelectedVersion(version);
-      
-      // Save current canvas state to the new version
-      saveVersion(version.name);
-      
-      toast.success(`Versão ${type} criada com estado atual do canvas`);
+
+      toast.success(
+        capturedState.warp
+          ? `Versão ${type} criada com a deformação atual`
+          : `Versão ${type} criada`,
+      );
     } catch (error) {
       console.error('Erro ao criar versão:', error);
       toast.error('Erro ao criar versão');
@@ -801,6 +827,8 @@ export default function Workbench() {
       createdAt: v.created_at,
       author: 'Autor',
       thumbnailUrl: v.thumbnail_url ?? undefined,
+      canvasState: v.canvas_state,
+      photoId: v.photo_id ?? undefined,
     }));
 
     setCaseData(prev => prev ? { ...prev, versions } : null);
@@ -855,6 +883,176 @@ export default function Workbench() {
     pullSkin(mediaPipeMeshData.points, pointIndex, dx, dy);
   }, [mediaPipeMeshData, pullSkin]);
 
+  // Estado que uma versão guarda hoje: a deformação e seus parâmetros. A coluna
+  // `canvas_state` existia desde o início e nunca havia sido escrita — por isso trocar de
+  // versão ou recarregar a página descartava o trabalho, e comparar A com B comparava
+  // dois registros vazios.
+  const captureVersionState = useCallback((): VersionState => {
+    if (warpDisplacements.size === 0) return { warp: null };
+    return {
+      warp: {
+        displacements: warpDisplacements,
+        radius: warpRadius,
+        intensity: warpIntensity,
+        anchorRegions,
+      },
+    };
+  }, [warpDisplacements, warpRadius, warpIntensity, anchorRegions]);
+
+  // Estado que a versão aberta já contém, para saber se há trabalho não salvo.
+  const savedStateRef = useRef<VersionState>({ warp: null });
+  const hasUnsavedWork = !versionStatesEqual(captureVersionState(), savedStateRef.current);
+
+  const applyVersionState = useCallback(
+    (version: CaseVersion | null) => {
+      const state = parseVersionState(version?.canvasState);
+      loadWarpState(state.warp);
+      savedStateRef.current = state;
+    },
+    [loadWarpState],
+  );
+
+  /** Grava o estado atual na versão indicada. */
+  const persistVersionState = useCallback(
+    async (versionId: string, state: VersionState, photoId?: string) => {
+      const { error } = await supabase
+        .from('case_versions')
+        .update({
+          canvas_state: JSON.parse(JSON.stringify(serializeVersionState(state))),
+          photo_id: photoId ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', versionId);
+
+      if (error) {
+        console.error('[versao] falha ao gravar o estado:', error);
+        toast.error('A versão foi criada, mas o estado não pôde ser salvo');
+        return false;
+      }
+      savedStateRef.current = state;
+      return true;
+    },
+    [],
+  );
+
+  // Trocar de versão troca o estado do canvas. Sem a confirmação, um clique na lista
+  // descartaria em silêncio a deformação que ainda não foi salva.
+  const [pendingVersion, setPendingVersion] = useState<CaseVersion | null>(null);
+
+  const handleSelectVersion = useCallback(
+    (version: CaseVersion) => {
+      if (version.id === selectedVersion?.id) return;
+      if (hasUnsavedWork) {
+        setPendingVersion(version);
+        return;
+      }
+      setSelectedVersion(version);
+      applyVersionState(version);
+    },
+    [selectedVersion, hasUnsavedWork, applyVersionState],
+  );
+
+  const confirmSelectVersion = useCallback(() => {
+    if (!pendingVersion) return;
+    setSelectedVersion(pendingVersion);
+    applyVersionState(pendingVersion);
+    setPendingVersion(null);
+  }, [pendingVersion, applyVersionState]);
+
+  /** Regrava a versão aberta com o estado atual do canvas. */
+  const handleUpdateVersion = useCallback(async () => {
+    if (!selectedVersion) return;
+    const state = captureVersionState();
+    const saved = await persistVersionState(selectedVersion.id, state, currentPhotoId);
+    if (saved) {
+      setCaseData(current =>
+        current
+          ? {
+              ...current,
+              versions: current.versions.map(v =>
+                v.id === selectedVersion.id
+                  ? { ...v, canvasState: serializeVersionState(state) }
+                  : v,
+              ),
+            }
+          : current,
+      );
+      toast.success('Versão atualizada');
+    }
+  }, [selectedVersion, captureVersionState, persistVersionState, currentPhotoId]);
+
+  // Comparação real entre versões.
+  //
+  // Antes, os dois lados recebiam `currentImageUrl` — a mesma foto, com rótulos
+  // diferentes. Agora cada lado é reconstruído a partir do estado salvo da sua versão:
+  // a foto que ela retrata, os landmarks daquela foto e a deformação gravada, passados
+  // pelo mesmo `warpFace` do canvas.
+  const [comparisonImages, setComparisonImages] = useState<{ a?: string; b?: string }>({});
+
+  useEffect(() => {
+    if (viewMode !== 'compare' || !caseData) return;
+
+    let cancelled = false;
+
+    const renderSide = async (version: CaseVersion | undefined): Promise<string | undefined> => {
+      if (!version) return undefined;
+
+      const photo = version.photoId
+        ? caseData.photos.find(p => p.id === version.photoId)
+        : undefined;
+      const url = photo?.url ?? currentImageUrl;
+      if (!url || url === '/placeholder.svg') return undefined;
+
+      const state = parseVersionState(version.canvasState);
+      if (!state.warp) return url;
+
+      // Os landmarks da foto que a versão retrata. Sem eles não há malha para deformar,
+      // e o lado cai para a foto original em vez de exibir algo errado.
+      let points = mediaPipeMeshData?.points;
+      const photoId = version.photoId ?? currentPhotoId;
+      if (photoId && photoId !== currentPhotoId) {
+        const { data } = await supabase
+          .from('facial_analyses')
+          .select('mesh')
+          .eq('photo_id', photoId)
+          .maybeSingle();
+        const mesh = data?.mesh as unknown as MediaPipeMeshData | null | undefined;
+        points = Array.isArray(mesh?.points) ? mesh?.points : undefined;
+      }
+      if (!points?.length) return url;
+
+      const image = new Image();
+      image.crossOrigin = 'anonymous';
+      image.src = url;
+      await image.decode();
+
+      const canvas = warpFace({
+        image,
+        landmarks: points,
+        displacements: state.warp.displacements,
+        triangles: getFaceTessellation(),
+      });
+      return canvas.toDataURL('image/png');
+    };
+
+    (async () => {
+      try {
+        const [a, b] = await Promise.all([
+          renderSide(caseData.versions.filter(v => v.type === 'A')[0]),
+          renderSide(caseData.versions.filter(v => v.type === 'B')[0]),
+        ]);
+        if (!cancelled) setComparisonImages({ a, b });
+      } catch (error) {
+        console.error('[comparar] falha ao montar os lados:', error);
+        if (!cancelled) setComparisonImages({});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, caseData, currentImageUrl, currentPhotoId, mediaPipeMeshData]);
+
   // Reexecuta a detecção sobre a foto atual, sem criar uma nova versão.
   const handleRetryAnalysis = useCallback(async () => {
     if (!caseData || !currentImageUrl || currentImageUrl === '/placeholder.svg') return;
@@ -891,11 +1089,16 @@ export default function Workbench() {
       .select()
       .single();
 
+
     if (versionError || !newVersion) {
       console.error('Erro ao criar versão:', versionError);
       toast.error('Não foi possível criar a versão para esta análise');
       return;
     }
+
+    // A versão registra também a deformação que estiver na tela — é o que faz o botão
+    // corresponder ao nome: antes ele criava um registro com apenas um carimbo de hora.
+    await persistVersionState(newVersion.id, captureVersionState(), currentPhotoId);
 
     await refreshVersions(caseData.id, newVersion.id);
     toast.success(`Versão "${versionName}" criada`);
@@ -903,7 +1106,10 @@ export default function Workbench() {
     if (currentPhotoId) {
       setAnalyzedPhotoIds(prev => new Set(prev).add(currentPhotoId));
     }
-  }, [caseData, currentImageUrl, currentPhotoId, triggerMediaPipeAnalysis, refreshVersions]);
+  }, [
+    caseData, currentImageUrl, currentPhotoId, triggerMediaPipeAnalysis, refreshVersions,
+    persistVersionState, captureVersionState,
+  ]);
 
   // Handle photo selection from header - must be before conditional returns
   const handlePhotoSelect = useCallback(async (url: string, photo: CasePhoto) => {
@@ -979,12 +1185,14 @@ export default function Workbench() {
         <VersionPanel
           caseData={caseData}
           selectedVersion={selectedVersion}
-          onSelectVersion={setSelectedVersion}
+          onSelectVersion={handleSelectVersion}
           onCreateVersion={handleCreateVersion}
           onDuplicateVersion={handleDuplicateVersion}
           onRenameVersion={handleRenameVersion}
           onDeleteVersion={handleDeleteVersion}
           onExport={handleExport}
+          hasUnsavedWork={hasUnsavedWork}
+          onUpdateVersion={handleUpdateVersion}
           onAddPhoto={handleAddPhoto}
         />
       </CollapsiblePanel>
@@ -1140,8 +1348,8 @@ export default function Workbench() {
           
           {viewMode === 'compare' && (
             <ComparisonView
-              imageA={currentImageUrl}
-              imageB={currentImageUrl}
+              imageA={comparisonImages.a ?? currentImageUrl}
+              imageB={comparisonImages.b ?? currentImageUrl}
               labelA={versionsA[0]?.name || 'Original'}
               labelB={versionsB[0]?.name || 'Versão B'}
             />
@@ -1237,6 +1445,27 @@ export default function Workbench() {
           />
         </div>
       </CollapsiblePanel>
+
+      {/* Trocar de versão substitui o estado do canvas. A deformação não salva se perderia
+          em silêncio — e ela pode custar minutos de trabalho sobre o rosto do paciente. */}
+      <AlertDialog open={pendingVersion !== null} onOpenChange={open => !open && setPendingVersion(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar a deformação atual?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Há uma deformação na tela que ainda não foi salva em nenhuma versão. Abrir
+              “{pendingVersion?.name}” vai substituí-la. Para manter, cancele e use
+              “Salvar nesta versão”.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSelectVersion}>
+              Descartar e abrir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* AI Mesh Recommendation Modal */}
       <MeshRecommendationModal

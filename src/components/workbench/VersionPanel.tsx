@@ -6,6 +6,7 @@ import {
   Copy, 
   RotateCcw, 
   Download,
+  Save,
   Clock,
   User,
   Check,
@@ -53,6 +54,9 @@ interface VersionPanelProps {
   onRenameVersion: (version: CaseVersion, newName: string) => void;
   onDeleteVersion: (version: CaseVersion) => void;
   onExport: () => void;
+  /** Há deformação na tela que ainda não foi gravada na versão aberta. */
+  hasUnsavedWork?: boolean;
+  onUpdateVersion?: () => void;
   onAddPhoto?: (file: File) => void;
 }
 
@@ -89,6 +93,8 @@ export function VersionPanel({
   onRenameVersion,
   onDeleteVersion,
   onExport,
+  hasUnsavedWork = false,
+  onUpdateVersion,
   onAddPhoto,
 }: VersionPanelProps) {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -307,6 +313,19 @@ export function VersionPanel({
 
       {/* Actions */}
       <div className="p-4 border-t border-border space-y-2">
+        {/* Só aparece quando há o que salvar: um botão sempre presente não distingue
+            "salvo" de "não salvo", que é a informação que importa aqui. */}
+        {hasUnsavedWork && onUpdateVersion && (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full text-xs border border-primary/40"
+            onClick={onUpdateVersion}
+          >
+            <Save className="h-3.5 w-3.5 mr-1.5" />
+            Salvar nesta versão
+          </Button>
+        )}
         <Button variant="default" size="sm" className="w-full text-xs" onClick={onExport}>
           <Download className="h-3.5 w-3.5 mr-1.5" />
           Exportar Versão
