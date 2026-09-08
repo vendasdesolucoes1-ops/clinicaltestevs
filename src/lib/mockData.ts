@@ -22,6 +22,10 @@ export interface CaseVersion {
   createdAt: string;
   author: string;
   thumbnailUrl?: string;
+  /** Conteúdo de `case_versions.canvas_state`; ver src/lib/versionState.ts. */
+  canvasState?: unknown;
+  /** Foto que a versão retrata (`case_versions.photo_id`). */
+  photoId?: string;
 }
 
 export interface SimulationJob {

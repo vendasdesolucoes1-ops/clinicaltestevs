@@ -40,6 +40,13 @@ interface UseFaceWarpReturn {
   pull: (landmarks: MediaPipePoint[], pointIndex: number, dx: number, dy: number) => void;
   /** Fecha o arraste em curso, transformando-o em um passo do histórico. */
   commitStroke: () => void;
+  /** Repõe um estado salvo (ao carregar uma versão). */
+  loadState: (state: {
+    displacements: DisplacementMap;
+    radius: number;
+    intensity: number;
+    anchorRegions: AnchorRegion[];
+  } | null) => void;
   canUndo: boolean;
   canRedo: boolean;
   undo: () => void;
@@ -82,6 +89,25 @@ export function useFaceWarp(): UseFaceWarpReturn {
     },
     [displacements, radius, intensity, anchorRegions],
   );
+
+  // Carregar uma versão é trocar de estado, não editar o atual: o histórico é zerado
+  // junto. Desfazer atravessando a fronteira entre duas versões devolveria a deformação
+  // de uma sobre a foto da outra.
+  const loadState = useCallback<UseFaceWarpReturn['loadState']>(state => {
+    strokeBaseRef.current = null;
+    setPast([]);
+    setFuture([]);
+
+    if (!state) {
+      setDisplacements(new Map());
+      return;
+    }
+
+    setDisplacements(new Map(state.displacements));
+    setRadius(state.radius);
+    setIntensity(state.intensity);
+    setAnchorRegions(state.anchorRegions);
+  }, []);
 
   const commitStroke = useCallback(() => {
     const base = strokeBaseRef.current;
@@ -159,6 +185,7 @@ export function useFaceWarp(): UseFaceWarpReturn {
     maxDisplacement,
     pull,
     commitStroke,
+    loadState,
     canUndo: past.length > 0,
     canRedo: future.length > 0,
     undo,
