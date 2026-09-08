@@ -142,6 +142,11 @@ export default function Workbench() {
     intensity: warpIntensity,
     setIntensity: setWarpIntensity,
     pull: pullSkin,
+    commitStroke: commitWarpStroke,
+    canUndo: canUndoWarp,
+    canRedo: canRedoWarp,
+    undo: undoWarp,
+    redo: redoWarp,
     reset: resetWarp,
     anchorRegions,
     toggleAnchorRegion,
@@ -514,15 +519,34 @@ export default function Workbench() {
   }, [caseData]);
 
   // Handlers
+  // Com a ferramenta de puxar pele ativa, desfazer age sobre a deformação — que não é
+  // objeto do canvas e por isso ficava fora do histórico de anotações.
   const handleUndo = useCallback(() => {
+    if (activeTool === 'skin_pull') {
+      if (!canUndoWarp) return;
+      undoWarp();
+      toast.info('Deformação desfeita', { duration: 1500 });
+      return;
+    }
     canvasRef.current?.undo();
     toast.info('Ação desfeita', { duration: 1500 });
-  }, []);
+  }, [activeTool, canUndoWarp, undoWarp]);
 
   const handleRedo = useCallback(() => {
+    if (activeTool === 'skin_pull') {
+      if (!canRedoWarp) return;
+      redoWarp();
+      toast.info('Deformação refeita', { duration: 1500 });
+      return;
+    }
     canvasRef.current?.redo();
     toast.info('Ação refeita', { duration: 1500 });
-  }, []);
+  }, [activeTool, canRedoWarp, redoWarp]);
+
+  const handleResetWarp = useCallback(() => {
+    resetWarp();
+    toast.info('Pele restaurada ao original', { duration: 1500 });
+  }, [resetWarp]);
 
   const handleClear = useCallback(() => {
     canvasRef.current?.clear();
@@ -967,6 +991,7 @@ export default function Workbench() {
                 ref={canvasRef}
                 warpDisplacements={warpDisplacements}
                 onWarpPull={handleWarpPull}
+                onWarpPullEnd={commitWarpStroke}
                 onWarpMeasureChange={setWarpMeasureMm}
                 imageUrl={currentImageUrl}
                 activeTool={activeTool}
@@ -992,6 +1017,8 @@ export default function Workbench() {
                 activeTool={activeTool}
                 isPanMode={isPanMode}
                 zoom={100}
+                hasWarp={hasWarp}
+                onResetWarp={handleResetWarp}
               />
             </>
           )}
@@ -1132,8 +1159,8 @@ export default function Workbench() {
             onUndo={handleUndo}
             onRedo={handleRedo}
             onClear={handleClear}
-            canUndo={undoStack.length > 0}
-            canRedo={redoStack.length > 0}
+            canUndo={activeTool === 'skin_pull' ? canUndoWarp : undoStack.length > 0}
+            canRedo={activeTool === 'skin_pull' ? canRedoWarp : redoStack.length > 0}
             isSimulating={mediaPipeStatus === 'processing'}
             onTriggerSimulation={handleTriggerSimulation}
             showMesh={showMesh}
@@ -1176,7 +1203,7 @@ export default function Workbench() {
             onWarpIntensityChange={setWarpIntensity}
             hasWarp={hasWarp}
             warpPointCount={displacedPointCount}
-            onResetWarp={resetWarp}
+            onResetWarp={handleResetWarp}
             anchorRegions={anchorRegions}
             onToggleAnchorRegion={toggleAnchorRegion}
             anchoredLandmarkCount={anchoredLandmarkCount}
