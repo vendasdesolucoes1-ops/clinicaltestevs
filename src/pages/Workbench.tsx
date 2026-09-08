@@ -126,7 +126,14 @@ export default function Workbench() {
     setIntensity: setWarpIntensity,
     pull: pullSkin,
     reset: resetWarp,
+    anchorRegions,
+    toggleAnchorRegion,
+    anchoredLandmarkCount,
   } = useFaceWarp();
+
+  // Deslocamento máximo em mm, calculado no canvas (que conhece a escala da imagem e a
+  // calibração). Null quando a foto não está calibrada.
+  const [warpMeasureMm, setWarpMeasureMm] = useState<number | null>(null);
 
   // AI Mesh recommendation
   const {
@@ -897,6 +904,7 @@ export default function Workbench() {
                 ref={canvasRef}
                 warpDisplacements={warpDisplacements}
                 onWarpPull={handleWarpPull}
+                onWarpMeasureChange={setWarpMeasureMm}
                 imageUrl={currentImageUrl}
                 activeTool={activeTool}
                 isPanMode={isPanMode}
@@ -1075,6 +1083,10 @@ export default function Workbench() {
             hasWarp={hasWarp}
             warpPointCount={displacedPointCount}
             onResetWarp={resetWarp}
+            anchorRegions={anchorRegions}
+            onToggleAnchorRegion={toggleAnchorRegion}
+            anchoredLandmarkCount={anchoredLandmarkCount}
+            warpMeasureMm={warpMeasureMm}
             isMeshAILoading={isMeshAILoading}
             activePointsCount={activePointsCount}
             // 3D Model generation (Meshy AI)

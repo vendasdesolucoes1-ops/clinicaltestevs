@@ -64,6 +64,7 @@ import { cn } from '@/lib/utils';
 import { type MeshDensity, type SymmetryResult, MESH_PRESETS } from '@/types/facialLandmarks';
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { type MeshVisualStyle } from './MediaPipeMeshRenderer';
+import { ANCHOR_REGION_LABELS, ANCHOR_REGION_HINTS, type AnchorRegion } from '@/lib/facialAnchors';
 import { SymmetryIndicator } from './SymmetryIndicator';
 import { AnalysisHistory } from './AnalysisHistory';
 import { Generate3DButton } from './Generate3DButton';
@@ -148,6 +149,10 @@ interface ToolPanelProps {
   hasWarp?: boolean;
   warpPointCount?: number;
   onResetWarp?: () => void;
+  anchorRegions?: AnchorRegion[];
+  onToggleAnchorRegion?: (region: AnchorRegion) => void;
+  anchoredLandmarkCount?: number;
+  warpMeasureMm?: number | null;
   
   // Active points counter
   activePointsCount?: number;
@@ -287,6 +292,10 @@ export function ToolPanel({
   hasWarp = false,
   warpPointCount = 0,
   onResetWarp,
+  anchorRegions = [],
+  onToggleAnchorRegion,
+  anchoredLandmarkCount = 0,
+  warpMeasureMm = null,
   isMeshAILoading,
   activePointsCount,
   // 3D Model generation (Meshy AI)
@@ -804,6 +813,57 @@ export function ToolPanel({
                         max={200}
                         step={5}
                       />
+                    </div>
+
+                    {/* Escala física da manobra */}
+                    <div className="rounded-md border border-border p-2 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Deslocamento máximo</Label>
+                        <span className="text-xs font-mono text-foreground">
+                          {warpMeasureMm !== null
+                            ? `${warpMeasureMm.toFixed(1)} mm`
+                            : hasWarp ? '— sem escala' : '0'}
+                        </span>
+                      </div>
+                      {warpMeasureMm === null && hasWarp && (
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          Calibre a foto (dois pontos de distância conhecida) para que a manobra
+                          seja expressa em milímetros.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Ancoragem anatômica */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Estruturas fixas</Label>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {anchoredLandmarkCount} pts
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Pele facial é ancorada em osso e ligamentos. O que estiver marcado resiste
+                        ao deslocamento em vez de acompanhar a manobra.
+                      </p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(Object.keys(ANCHOR_REGION_LABELS) as AnchorRegion[]).map(region => (
+                          <Tooltip key={region}>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant={anchorRegions.includes(region) ? 'tool-active' : 'outline'}
+                                size="sm"
+                                className="h-7 px-2 text-[11px] justify-start"
+                                onClick={() => onToggleAnchorRegion?.(region)}
+                              >
+                                {ANCHOR_REGION_LABELS[region]}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-[200px]">
+                              <p className="text-xs">{ANCHOR_REGION_HINTS[region]}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </div>
                     </div>
 
                     <Button
