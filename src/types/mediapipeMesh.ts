@@ -22,7 +22,7 @@ export interface MediaPipeWebhookResponse {
   // Wrapped format (preferred)
   face_mesh?: MediaPipeMeshData;
   
-  // Flat format (n8n current output)
+  // Formato plano (compatibilidade com resultados já gravados)
   landmarks?: MediaPipePoint[];
   points?: MediaPipePoint[];
   connections?: [number, number][];

@@ -17,12 +17,10 @@ jobs:
         with:
           node-version: '22'
 
-      # `npm ci` não funciona neste repositório: o package-lock.json está fora de
-      # sincronia com o package.json e o comando aborta com "can only install packages
-      # when your package.json and package-lock.json are in sync". Trocar para `npm ci`
-      # assim que o lockfile for regenerado — o build passa a ser reproduzível.
+      # `npm ci` instala exatamente o que está no lockfile: build reproduzível e falha
+      # explícita se package.json e package-lock.json divergirem.
       - name: Instalar dependências
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Typecheck
         run: npx tsc --noEmit -p tsconfig.app.json

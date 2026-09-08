@@ -75,7 +75,7 @@ export interface FacialPoint {
   region: AnatomicalRegion;
   adjacentRegions?: AnatomicalRegion[];
   // AI-1: confiança do detector neste ponto (0-1). `undefined` = escore não informado
-  // (ex.: landmarks vindos do pipeline n8n), que não é o mesmo que confiança baixa.
+  // (ex.: o mesh geométrico do MediaPipe), que não é o mesmo que confiança baixa.
   confidence?: number;
   category?: 'forehead' | 'eyebrows' | 'eyes' | 'nose' | 'mouth' | 'chin' | 'contour' | 'cheeks' | 'ears'; // legacy
 }

@@ -25,7 +25,6 @@ import { MeshRecommendationModal } from '@/components/workbench/MeshRecommendati
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
-import { useN8nFacialAnalysis } from '@/hooks/useN8nFacialAnalysis';
 import { useMediaPipeMesh } from '@/hooks/useMediaPipeMesh';
 import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
 import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
@@ -99,23 +98,9 @@ export default function Workbench() {
     clearMesh,
   } = useFacialAnalysis();
 
-  // n8n async facial analysis
+  // Detecção de landmarks MediaPipe, rodando no navegador
   const {
-    analysisJob,
-    isProcessing: isN8nProcessing,
-    meshData: n8nMeshData,
-    mediaPipeMeshData: n8nMediaPipeMeshData,
-    triggerAnalysis,
-    triggerSimulation,
-    retryAnalysis,
-    cancelAnalysis,
-    createdVersion,
-    clearCreatedVersion,
-  } = useN8nFacialAnalysis();
-
-  // MediaPipe mesh (real landmarks from backend) - standalone hook
-  const {
-    meshData: standaloneMediaPipeMeshData,
+    meshData: mediaPipeMeshData,
     visible: mediaPipeMeshVisible,
     setVisible: setMediaPipeMeshVisible,
     opacity: mediaPipeMeshOpacity,
@@ -164,12 +149,10 @@ export default function Workbench() {
     fetchScans();
   });
 
-  // Use MediaPipe mesh from n8n or standalone hook
-  const mediaPipeMeshData = n8nMediaPipeMeshData || standaloneMediaPipeMeshData;
-
-  // Use n8n mesh data if available, otherwise use local
-  const meshData = n8nMeshData || localMeshData;
-  const isAnalyzing = isLocalAnalyzing || isN8nProcessing || mediaPipeStatus === 'processing';
+  // Mesh anatômico nomeado (edge function `analyze-face`); o mesh MediaPipe de 478
+  // pontos vem do hook acima e é renderizado em paralelo.
+  const meshData = localMeshData;
+  const isAnalyzing = isLocalAnalyzing || mediaPipeStatus === 'processing';
 
   // Calcular análise de simetria
   const symmetryResult = useSymmetryAnalysis(meshData);
@@ -356,7 +339,7 @@ export default function Workbench() {
           // No automatic analysis trigger - user must click "Gerar Análise Facial" button
         }
 
-        // Note: processing jobs are now handled via n8n polling, no need to set here
+        // A detecção roda no navegador e resolve de forma síncrona: não há job a acompanhar.
 
         // Create base version if none exists
         if (versions.length === 0) {
@@ -473,7 +456,7 @@ export default function Workbench() {
       console.error('Erro no upload/análise:', error);
       toast.error('Erro ao processar imagem');
     }
-  }, [caseData, triggerAnalysis]);
+  }, [caseData]);
 
   // Handlers
   const handleUndo = useCallback(() => {
@@ -530,7 +513,7 @@ export default function Workbench() {
   }, [currentImageUrl, currentPhotoId, caseData, getMeshRecommendation]);
 
   // AI-1: análise direta pela edge function `analyze-face` (Gemini). Caminho
-  // independente do fluxo n8n disparado na criação do caso — os dois coexistem.
+  // Complementa o mesh geométrico do MediaPipe com landmarks anatômicos nomeados.
   const handleAnalyzeDirect = useCallback(async () => {
     if (!currentImageUrl) {
       toast.error('Selecione uma foto primeiro');
@@ -700,54 +683,80 @@ export default function Workbench() {
     }
   };
 
-  // Trigger real n8n simulation
+  // Recarrega as versões do caso e seleciona a recém-criada, se informada.
+  const refreshVersions = useCallback(async (caseId: string, selectVersionId?: string) => {
+    const { data: versionsData } = await supabase
+      .from('case_versions')
+      .select('*')
+      .eq('case_id', caseId)
+      .order('created_at', { ascending: true });
+
+    if (!versionsData) return;
+
+    const versions: CaseVersion[] = versionsData.map(v => ({
+      id: v.id,
+      name: v.name,
+      type: v.type as CaseVersion['type'],
+      description: v.description || '',
+      status: v.status as CaseVersion['status'],
+      createdAt: v.created_at,
+      author: 'Autor',
+      thumbnailUrl: v.thumbnail_url ?? undefined,
+    }));
+
+    setCaseData(prev => prev ? { ...prev, versions } : null);
+
+    if (selectVersionId) {
+      const newVersion = versions.find(v => v.id === selectVersionId);
+      if (newVersion) setSelectedVersion(newVersion);
+    }
+  }, []);
+
+  // Reexecuta a detecção sobre a foto atual, sem criar uma nova versão.
+  const handleRetryAnalysis = useCallback(async () => {
+    if (!caseData || !currentImageUrl || currentImageUrl === '/placeholder.svg') return;
+    await triggerMediaPipeAnalysis(caseData.id, currentImageUrl, currentPhotoId);
+  }, [caseData, currentImageUrl, currentPhotoId, triggerMediaPipeAnalysis]);
+
+  // Roda a detecção de landmarks na foto atual e registra o resultado como uma nova
+  // versão do caso. A detecção acontece no navegador, sem serviço externo.
   const handleTriggerSimulation = useCallback(async (targetVersion: 'A' | 'B') => {
     if (!caseData || !currentImageUrl || currentImageUrl === '/placeholder.svg') {
       toast.error('Selecione uma foto antes de rodar a simulação');
       return;
     }
-    
-    await triggerSimulation(caseData.id, currentImageUrl, targetVersion, currentPhotoId);
-  }, [caseData, currentImageUrl, currentPhotoId, triggerSimulation]);
 
-  // Handle created version from simulation
-  useEffect(() => {
-    if (createdVersion && caseData) {
-      // Refresh versions list to include the new one
-      const refreshVersions = async () => {
-        const { data: versionsData } = await supabase
-          .from('case_versions')
-          .select('*')
-          .eq('case_id', caseData.id)
-          .order('created_at', { ascending: true });
-        
-        if (versionsData) {
-          const versions: CaseVersion[] = versionsData.map(v => ({
-            id: v.id,
-            name: v.name,
-            type: v.type as CaseVersion['type'],
-            description: v.description || '',
-            status: v.status as CaseVersion['status'],
-            createdAt: v.created_at,
-            author: 'Autor',
-            thumbnailUrl: v.thumbnail_url ?? undefined,
-          }));
-          
-          setCaseData(prev => prev ? { ...prev, versions } : null);
-          
-          // Auto-select the newly created version
-          const newVersion = versions.find(v => v.id === createdVersion.id);
-          if (newVersion) {
-            setSelectedVersion(newVersion);
-          }
-        }
-        
-        clearCreatedVersion();
-      };
-      
-      refreshVersions();
+    await triggerMediaPipeAnalysis(caseData.id, currentImageUrl, currentPhotoId);
+
+    const versionName = `Análise Facial ${new Date().toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    })}`;
+
+    const { data: newVersion, error: versionError } = await supabase
+      .from('case_versions')
+      .insert({
+        case_id: caseData.id,
+        name: versionName,
+        type: targetVersion,
+        status: 'pronto',
+        description: 'Versão criada automaticamente após a análise facial',
+      })
+      .select()
+      .single();
+
+    if (versionError || !newVersion) {
+      console.error('Erro ao criar versão:', versionError);
+      toast.error('Não foi possível criar a versão para esta análise');
+      return;
     }
-  }, [createdVersion, caseData, clearCreatedVersion]);
+
+    await refreshVersions(caseData.id, newVersion.id);
+    toast.success(`Versão "${versionName}" criada`);
+
+    if (currentPhotoId) {
+      setAnalyzedPhotoIds(prev => new Set(prev).add(currentPhotoId));
+    }
+  }, [caseData, currentImageUrl, currentPhotoId, triggerMediaPipeAnalysis, refreshVersions]);
 
   // Handle photo selection from header - must be before conditional returns
   const handlePhotoSelect = useCallback(async (url: string, photo: CasePhoto) => {
@@ -896,7 +905,7 @@ export default function Workbench() {
               <div className="flex flex-col items-center gap-3 p-6 rounded-lg bg-card border border-border shadow-xl">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <span className="text-sm text-foreground font-medium">Analisando landmarks faciais...</span>
-                <p className="text-xs text-muted-foreground">Processando via n8n...</p>
+                <p className="text-xs text-muted-foreground">Detecção rodando no navegador...</p>
               </div>
             </div>
           )}
@@ -914,7 +923,7 @@ export default function Workbench() {
                 <Viewer3D 
                   modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
                   imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
-                  isProcessing={isN8nProcessing || is3DGenerating}
+                  isProcessing={mediaPipeStatus === 'processing' || is3DGenerating}
                 />
               )}
               
@@ -969,12 +978,12 @@ export default function Workbench() {
           )}
         </div>
 
-        {/* n8n Analysis Status Bar */}
-        {analysisJob && (
-          <AnalysisStatusBar 
-            status={analysisJob.status} 
-            onRetry={retryAnalysis}
-            onCancel={cancelAnalysis}
+        {/* Status da detecção de landmarks */}
+        {mediaPipeStatus !== 'idle' && (
+          <AnalysisStatusBar
+            status={mediaPipeStatus}
+            onRetry={handleRetryAnalysis}
+            onCancel={clearMediaPipeMesh}
           />
         )}
       </div>
@@ -997,7 +1006,7 @@ export default function Workbench() {
             onClear={handleClear}
             canUndo={undoStack.length > 0}
             canRedo={redoStack.length > 0}
-            isSimulating={isN8nProcessing}
+            isSimulating={mediaPipeStatus === 'processing'}
             onTriggerSimulation={handleTriggerSimulation}
             showMesh={showMesh}
             onShowMeshChange={setShowMesh}
@@ -1014,8 +1023,8 @@ export default function Workbench() {
             isAnalyzingFace={isAnalyzing}
             symmetryResult={symmetryResult}
             caseId={caseData?.id}
-            onRetryAnalysis={retryAnalysis}
-            onCancelAnalysis={cancelAnalysis}
+            onRetryAnalysis={handleRetryAnalysis}
+            onCancelAnalysis={clearMediaPipeMesh}
             onLoadAnalysis={loadExistingAnalysis}
             onAnalysisDeleted={async () => {
               if (!caseData) return;
