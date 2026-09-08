@@ -26,6 +26,7 @@ import {
   Brain,
   Loader2,
   ScanFace,
+  Hand,
   FileText,
   Target,
   Crosshair,
@@ -76,7 +77,7 @@ import {
   type InterventionType,
 } from '@/types/clinicalTools';
 
-export type ToolType = 'select' | 'correction_vector' | 'intervention_area' | 'surgical_marking' | 'annotate' | 'eraser' | 'measure' | 'angle';
+export type ToolType = 'select' | 'correction_vector' | 'intervention_area' | 'surgical_marking' | 'skin_pull' | 'annotate' | 'eraser' | 'measure' | 'angle';
 
 // Legacy type alias for backwards compatibility
 export type LegacyToolType = 'warp' | 'volume' | 'incision' | 'suture';
@@ -138,6 +139,15 @@ interface ToolPanelProps {
   // AI-1: análise direta pela edge function `analyze-face` (Gemini), independente do
   // mesh geométrico do MediaPipe.
   onAnalyzeDirect?: () => void;
+
+  // PR-4 nível 1: deformação geométrica da face
+  warpRadius?: number;
+  onWarpRadiusChange?: (radius: number) => void;
+  warpIntensity?: number;
+  onWarpIntensityChange?: (intensity: number) => void;
+  hasWarp?: boolean;
+  warpPointCount?: number;
+  onResetWarp?: () => void;
   
   // Active points counter
   activePointsCount?: number;
@@ -175,6 +185,13 @@ const PLANNING_TOOLS: { id: ToolType; icon: React.ElementType; label: string; to
     label: 'Marcação Cirúrgica', 
     tooltip: 'Trace linhas de incisão, limites de descolamento ou suturas.', 
     shortcut: '3' 
+  },
+  {
+    id: 'skin_pull',
+    icon: Hand,
+    label: 'Puxar Pele',
+    tooltip: 'Arraste sobre o rosto para deslocar a pele. Deformação geométrica sobre a malha detectada — visualização, não predição cirúrgica.',
+    shortcut: '9'
   },
 ];
 
@@ -263,6 +280,13 @@ export function ToolPanel({
   currentPhotoAngle,
   onTriggerMeshAI,
   onAnalyzeDirect,
+  warpRadius = 0.08,
+  onWarpRadiusChange,
+  warpIntensity = 100,
+  onWarpIntensityChange,
+  hasWarp = false,
+  warpPointCount = 0,
+  onResetWarp,
   isMeshAILoading,
   activePointsCount,
   // 3D Model generation (Meshy AI)
@@ -728,12 +752,75 @@ export function ToolPanel({
                 {activeTool === 'correction_vector' && 'Vetor de Correção'}
                 {activeTool === 'intervention_area' && 'Área de Intervenção'}
                 {activeTool === 'surgical_marking' && 'Marcação Cirúrgica'}
-                {!['correction_vector', 'intervention_area', 'surgical_marking'].includes(activeTool) && 'Parâmetros'}
+                {activeTool === 'skin_pull' && 'Puxar Pele'}
+                {!['correction_vector', 'intervention_area', 'surgical_marking', 'skin_pull'].includes(activeTool) && 'Parâmetros'}
               </span>
             </AccordionTrigger>
             <AccordionContent className="px-3 pb-3">
               <div className="space-y-4">
                 
+                {/* PR-4 nível 1: parâmetros da deformação geométrica */}
+                {activeTool === 'skin_pull' && (
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/20">
+                      <Activity className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Deformação <strong className="text-foreground">geométrica</strong>: mostra como a
+                        imagem ficaria se a pele se movesse assim. Não incorpora rigidez de tecido, tensão de
+                        sutura nem comportamento de cicatriz — não prediz o resultado da intervenção.
+                      </p>
+                    </div>
+
+                    <p className="text-[10px] text-muted-foreground">
+                      Arraste sobre o rosto para deslocar a pele. O tecido ao redor acompanha com atenuação
+                      suave, dentro do raio de influência.
+                    </p>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Raio de Influência</Label>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {(warpRadius * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <Slider
+                        value={[warpRadius * 100]}
+                        onValueChange={([v]) => onWarpRadiusChange?.(v / 100)}
+                        min={2}
+                        max={25}
+                        step={1}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Intensidade</Label>
+                        <span className="text-[10px] font-mono text-muted-foreground">{warpIntensity}%</span>
+                      </div>
+                      <Slider
+                        value={[warpIntensity]}
+                        onValueChange={([v]) => onWarpIntensityChange?.(v)}
+                        min={10}
+                        max={200}
+                        step={5}
+                      />
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 gap-1.5"
+                      onClick={onResetWarp}
+                      disabled={!hasWarp}
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      <span className="text-xs">
+                        {hasWarp ? `Redefinir (${warpPointCount} pontos)` : 'Sem deformação'}
+                      </span>
+                    </Button>
+                  </div>
+                )}
+
                 {/* Correction Vector Parameters */}
                 {activeTool === 'correction_vector' && (
                   <div className="space-y-3">

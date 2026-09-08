@@ -17,6 +17,8 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 import { type MeshVisualStyle, type MeshMeasurement, type MeshAngleMeasurement } from './MediaPipeMeshRenderer';
+import { warpFace, type DisplacementMap } from '@/lib/faceWarp';
+import { MEDIAPIPE_FACE_TESSELLATION } from '@/types/mediapipeTessellation';
 
 interface SimulationCanvasProps {
   imageUrl: string;
@@ -37,6 +39,10 @@ interface SimulationCanvasProps {
   onMeshStartConnection?: (fromId: string) => void;
   onMeshAddConnection?: (fromId: string, toId: string) => void;
   onMeshRemoveConnection?: (fromId: string, toId: string) => void;
+
+  // PR-4 nível 1: deformação geométrica da face
+  warpDisplacements?: DisplacementMap;
+  onWarpPull?: (pointIndex: number, dx: number, dy: number) => void;
 }
 
 export interface SimulationCanvasRef {
@@ -54,6 +60,7 @@ const TOOL_COLORS: Record<ToolType, string> = {
   correction_vector: '#f59e0b', // Vetor de correção (setas)
   intervention_area: '#22c55e', // Área de intervenção
   surgical_marking: '#ef4444',  // Marcação cirúrgica
+  skin_pull: '#ec4899',         // Puxar pele (deformação)
   annotate: '#0ea5e9',
   eraser: '#64748b',
   measure: '#7c3aed',
@@ -65,6 +72,7 @@ const TOOL_CURSORS: Record<ToolType, string> = {
   correction_vector: 'crosshair',
   intervention_area: 'crosshair',
   surgical_marking: 'crosshair',
+  skin_pull: 'grab',
   annotate: 'text',
   eraser: 'pointer',
   measure: 'crosshair',
@@ -183,7 +191,7 @@ const createWarpArrow = (
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -191,6 +199,12 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     const [isReady, setIsReady] = useState(false);
     const [cursorPosition, setCursorPosition] = useState<Point>({ x: 0, y: 0 });
     const [imageBounds, setImageBounds] = useState({ width: 0, height: 0, left: 0, top: 0 });
+
+    // PR-4: elemento original da foto e canvas reaproveitado entre quadros da deformação.
+    // Guardar o original permite desfazer a deformação sem recarregar a imagem.
+    const sourceImageElRef = useRef<HTMLImageElement | null>(null);
+    const warpCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const pullAnchorRef = useRef<{ pointIndex: number; x: number; y: number } | null>(null);
     const [isMouseOverCanvas, setIsMouseOverCanvas] = useState(false);
     
     // For warp tool - track drag start/end
@@ -308,7 +322,10 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         });
         
         (img as any).customName = 'backgroundImage';
-        
+
+        // Guardado para restaurar a foto intacta ao redefinir a deformação (PR-4).
+        sourceImageElRef.current = img.getElement() as HTMLImageElement;
+
         setImageBounds({
           width: imgWidth,
           height: imgHeight,
@@ -398,6 +415,46 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
 
       canvas.renderAll();
     }, [layers, layerOpacity]);
+
+    // PR-4: aplica a deformação geométrica trocando o elemento da imagem de fundo.
+    // Fazendo assim, zoom, pan, camadas e exportação seguem funcionando sem alteração —
+    // o objeto do Fabric é o mesmo, muda só o pixel que ele desenha.
+    useEffect(() => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      const background = canvas
+        .getObjects()
+        .find(obj => (obj as fabric.Object & { customName?: string }).customName === 'backgroundImage') as
+        | fabric.FabricImage
+        | undefined;
+
+      const original = sourceImageElRef.current;
+      if (!background || !original) return;
+
+      const landmarks = mediaPipeMeshData?.points;
+      const hasWarp = !!warpDisplacements && warpDisplacements.size > 0;
+
+      if (!hasWarp || !landmarks || landmarks.length === 0) {
+        // Sem deformação: volta para a foto original, sem recarregar nada.
+        if (background.getElement() !== original) {
+          background.setElement(original);
+          canvas.renderAll();
+        }
+        return;
+      }
+
+      warpCanvasRef.current = warpFace({
+        image: original,
+        landmarks,
+        displacements: warpDisplacements,
+        triangles: MEDIAPIPE_FACE_TESSELLATION,
+        target: warpCanvasRef.current ?? undefined,
+      });
+
+      background.setElement(warpCanvasRef.current);
+      canvas.renderAll();
+    }, [warpDisplacements, mediaPipeMeshData, isReady]);
 
     useEffect(() => {
       const canvas = fabricRef.current;
@@ -500,9 +557,45 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         }
       };
 
+      // PR-4: converte o ponteiro do canvas para as coordenadas normalizadas em que os
+      // landmarks vivem, e encontra o landmark mais próximo do toque.
+      const toNormalized = (pointer: { x: number; y: number }) => ({
+        x: (pointer.x - imageBounds.left) / (imageBounds.width || 1),
+        y: (pointer.y - imageBounds.top) / (imageBounds.height || 1),
+      });
+
+      const findNearestLandmark = (normalized: { x: number; y: number }) => {
+        const landmarks = mediaPipeMeshData?.points;
+        if (!landmarks || landmarks.length === 0) return null;
+
+        let nearestIndex = -1;
+        let nearestDistance = Infinity;
+        landmarks.forEach((point, index) => {
+          const distance = (point.x - normalized.x) ** 2 + (point.y - normalized.y) ** 2;
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestIndex = index;
+          }
+        });
+
+        // Longe demais de qualquer landmark: o clique caiu fora do rosto.
+        return Math.sqrt(nearestDistance) > 0.12 ? null : nearestIndex;
+      };
+
       // Handle mouse events for other tools
       const handleMouseDown = (e: any) => {
         const pointer = canvas.getPointer(e.e);
+
+        if (activeTool === 'skin_pull') {
+          const normalized = toNormalized(pointer);
+          const nearest = findNearestLandmark(normalized);
+          if (nearest === null) {
+            toast.info('Clique sobre o rosto para deslocar a pele');
+            return;
+          }
+          pullAnchorRef.current = { pointIndex: nearest, x: normalized.x, y: normalized.y };
+          return;
+        }
         
         // Handle calibration clicks
         if (isCalibrating) {
@@ -724,11 +817,27 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           }
           warpStartRef.current = null;
         }
+
+        pullAnchorRef.current = null;
       };
 
       const handleMouseMove = (e: any) => {
         const pointer = canvas.getPointer(e.e);
         setCursorPosition({ x: pointer.x, y: pointer.y });
+
+        const anchor = pullAnchorRef.current;
+        if (activeTool !== 'skin_pull' || !anchor || !onWarpPull) return;
+
+        const normalized = toNormalized(pointer);
+        const dx = normalized.x - anchor.x;
+        const dy = normalized.y - anchor.y;
+
+        // Incremental: cada quadro aplica só o trecho percorrido desde o anterior, para
+        // que o deslocamento acompanhe o cursor em vez de multiplicar a cada evento.
+        if (Math.hypot(dx, dy) < 0.002) return;
+
+        onWarpPull(anchor.pointIndex, dx, dy);
+        pullAnchorRef.current = { ...anchor, x: normalized.x, y: normalized.y };
       };
 
       const handleMouseOver = () => setIsMouseOverCanvas(true);
