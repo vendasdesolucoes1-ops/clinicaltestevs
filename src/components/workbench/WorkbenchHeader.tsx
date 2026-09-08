@@ -40,7 +40,9 @@ interface WorkbenchHeaderProps {
   selectedVersion: CaseVersion | null;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  currentImageUrl: string;
+  // O seletor identifica a foto pelo id: a URL de exibição é uma signed URL efêmera
+  // (bucket privado), então não serve como chave estável.
+  currentPhotoId?: string;
   onPhotoSelect: (url: string, photo: CasePhoto) => void;
   analyzedPhotoIds: Set<string>;
   canCompare: boolean;
@@ -60,7 +62,7 @@ export function WorkbenchHeader({
   selectedVersion,
   viewMode,
   onViewModeChange,
-  currentImageUrl,
+  currentPhotoId,
   onPhotoSelect,
   analyzedPhotoIds,
   canCompare,
@@ -100,10 +102,10 @@ export function WorkbenchHeader({
             <TooltipTrigger asChild>
               <div>
                 <Select
-                  value={currentImageUrl}
-                  onValueChange={(url) => {
-                    const photo = caseData.photos.find(p => p.url === url);
-                    if (photo) onPhotoSelect(url, photo);
+                  value={currentPhotoId ?? ''}
+                  onValueChange={(photoId) => {
+                    const photo = caseData.photos.find(p => p.id === photoId);
+                    if (photo) onPhotoSelect(photo.url, photo);
                   }}
                 >
                   <SelectTrigger className="w-[180px] h-8 text-xs">
@@ -112,7 +114,7 @@ export function WorkbenchHeader({
                   </SelectTrigger>
                   <SelectContent className="z-50 bg-popover">
                     {caseData.photos.map((photo) => (
-                      <SelectItem key={photo.id} value={photo.url} className="text-xs">
+                      <SelectItem key={photo.id} value={photo.id} className="text-xs">
                         <span className="flex items-center gap-2">
                           {photo.angle === 'frente' ? 'Frente' :
                            photo.angle === 'perfil_d' ? 'Perfil Direito' :

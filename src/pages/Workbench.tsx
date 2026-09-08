@@ -34,6 +34,7 @@ import { useMeshRecommendation } from '@/hooks/useMeshRecommendation';
 import { useMeshy3D } from '@/hooks/useMeshy3D';
 import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
+import { resolveSignedUrl, resolveSignedUrls } from '@/lib/storageUrls';
 import { toast } from 'sonner';
 import { MEDIAPIPE_FACE_TESSELLATION } from '@/types/mediapipeTessellation';
 import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
@@ -264,11 +265,18 @@ export default function Workbench() {
           .eq('status', 'processando')
           .maybeSingle();
 
+        // Bucket privado (S-1): a exibição usa signed URLs derivadas do storage_path.
+        // A coluna `url` fica como fallback para linhas sem storage_path válido.
+        const signedPhotoUrls = await resolveSignedUrls(
+          'case-photos',
+          (photosData || []).map(p => p.storage_path),
+        );
+
         // Map photos to CasePhoto format
         const photos: CasePhoto[] = (photosData || []).map(p => ({
           id: p.id,
           angle: p.angle as CasePhoto['angle'],
-          url: p.url,
+          url: (p.storage_path && signedPhotoUrls.get(p.storage_path)) || p.url,
           capturedAt: p.created_at,
         }));
 
@@ -413,10 +421,13 @@ export default function Workbench() {
         return;
       }
 
-      // Get public URL
+      // Bucket privado: `url` guarda a referência canônica em formato público, mas a
+      // exibição precisa de uma signed URL.
       const { data: { publicUrl } } = supabase.storage
         .from('case-photos')
         .getPublicUrl(fileName);
+
+      const displayUrl = (await resolveSignedUrl('case-photos', fileName)) ?? publicUrl;
 
       // Insert photo record into case_photos table
       const { data: photoRecord, error: insertError } = await supabase
@@ -440,17 +451,18 @@ export default function Workbench() {
       const newPhoto = {
         id: photoRecord?.id || `ph_${Date.now()}`,
         angle: 'frente' as const,
-        url: publicUrl,
+        url: displayUrl,
         capturedAt: new Date().toISOString(),
       };
-      
+
       setCaseData(prev => prev ? {
         ...prev,
         photos: [...prev.photos, newPhoto],
       } : null);
 
-      // Update display URL to the public one
-      setCurrentImageUrl(publicUrl);
+      // Update display URL and selection (o seletor de fotos identifica pelo id)
+      setCurrentImageUrl(displayUrl);
+      setCurrentPhotoId(newPhoto.id);
 
       // No automatic analysis - user must click "Gerar Análise Facial" button
       toast.success('Foto adicionada', {
@@ -512,10 +524,10 @@ export default function Workbench() {
     await getMeshRecommendation({
       imageUrl: currentImageUrl,
       caseType: caseData?.type,
-      photoAngle: caseData?.photos.find(p => p.url === currentImageUrl)?.angle,
+      photoAngle: caseData?.photos.find(p => p.id === currentPhotoId)?.angle,
       notes: caseData?.notes,
     });
-  }, [currentImageUrl, caseData, getMeshRecommendation]);
+  }, [currentImageUrl, currentPhotoId, caseData, getMeshRecommendation]);
 
   const handleApplyMeshRecommendation = useCallback((density: MeshDensity) => {
     setMeshDensity(density);
@@ -828,7 +840,7 @@ export default function Workbench() {
           selectedVersion={selectedVersion}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          currentImageUrl={currentImageUrl}
+          currentPhotoId={currentPhotoId}
           onPhotoSelect={handlePhotoSelect}
           analyzedPhotoIds={analyzedPhotoIds}
           canCompare={versionsA.length > 0 || versionsB.length > 0}
@@ -1008,7 +1020,7 @@ export default function Workbench() {
             }}
             onGetCanvasImage={() => canvasRef.current?.getCanvasDataUrl() ?? null}
             caseName={caseData?.codename}
-            currentPhotoAngle={caseData?.photos.find((p) => p.url === currentImageUrl)?.angle}
+            currentPhotoAngle={caseData?.photos.find((p) => p.id === currentPhotoId)?.angle}
             onTriggerMeshAI={handleTriggerMeshAI}
             isMeshAILoading={isMeshAILoading}
             activePointsCount={activePointsCount}
