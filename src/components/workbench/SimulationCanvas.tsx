@@ -315,7 +315,12 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       const canvas = fabricRef.current;
       if (!canvas || !imageUrl) return;
 
-      fabric.FabricImage.fromURL(imageUrl).then((img) => {
+      // `crossOrigin` é obrigatório aqui: a foto vem de signed URL do Supabase, outra
+      // origem. Sem isso o canvas fica contaminado e `toDataURL` lança SecurityError — a
+      // exportação simplesmente não acontece. O bucket responde com cabeçalho CORS (é o
+      // mesmo caminho por onde a textura da malha 3D carrega), então a imagem continua
+      // aparecendo normalmente.
+      fabric.FabricImage.fromURL(imageUrl, { crossOrigin: 'anonymous' }).then((img) => {
         const containerWidth = canvas.getWidth();
         const containerHeight = canvas.getHeight();
         
@@ -1156,7 +1161,37 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       exportImage: () => {
         const canvas = fabricRef.current;
         if (!canvas) return null;
-        return canvas.toDataURL({ multiplier: 1, format: 'png', quality: 1 });
+
+        // O canvas do Fabric tem o tamanho do contêiner, não o da foto, e `toDataURL`
+        // respeita o viewportTransform. Exportando direto, o arquivo dependia de onde a
+        // tela estava: a 100% saía com as margens do canvas em volta, e com zoom saía
+        // cortado no pedaço visível. Aqui a exportação é sempre a região da foto, em
+        // resolução nativa, independente de zoom e deslocamento.
+        if (!imageBounds.width || !imageBounds.height) {
+          return canvas.toDataURL({ multiplier: 1, format: 'png', quality: 1 });
+        }
+
+        const previousTransform = canvas.viewportTransform
+          ? ([...canvas.viewportTransform] as typeof canvas.viewportTransform)
+          : undefined;
+
+        const naturalWidth = sourceImageElRef.current?.naturalWidth ?? imageBounds.width;
+        const multiplier = naturalWidth / imageBounds.width;
+
+        try {
+          canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+          return canvas.toDataURL({
+            format: 'png',
+            quality: 1,
+            left: imageBounds.left,
+            top: imageBounds.top,
+            width: imageBounds.width,
+            height: imageBounds.height,
+            multiplier,
+          });
+        } finally {
+          if (previousTransform) canvas.setViewportTransform(previousTransform);
+        }
       },
       getCanvasState: () => {
         const canvas = fabricRef.current;

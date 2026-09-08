@@ -35,6 +35,7 @@ import { useMeshy3D } from '@/hooks/useMeshy3D';
 import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { resolveSignedUrl, resolveSignedUrls } from '@/lib/storageUrls';
+import { renderExport } from '@/lib/exportImage';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { toast } from 'sonner';
 import { getFaceTessellation } from '@/types/mediapipeTessellation';
@@ -750,14 +751,34 @@ export default function Workbench() {
     }
   };
 
-  const handleExport = () => {
+  // A imagem exportada sai do sistema e circula fora dele: leva marca d'água e faixa de
+  // identificação para não ser confundida com foto de resultado. Ver src/lib/exportImage.ts.
+  const handleExport = async () => {
     const dataUrl = canvasRef.current?.exportImage();
-    if (dataUrl) {
+    if (!dataUrl) {
+      toast.error('Não foi possível gerar a imagem');
+      return;
+    }
+
+    try {
+      const image = new Image();
+      image.src = dataUrl;
+      await image.decode();
+
+      const marked = renderExport({
+        image,
+        caseName: caseData?.codename || 'Caso',
+        versionName: selectedVersion?.name,
+      });
+
       const link = document.createElement('a');
       link.download = `${caseData?.codename || 'simulation'}_${selectedVersion?.name || 'export'}.png`;
-      link.href = dataUrl;
+      link.href = marked;
       link.click();
       toast.success('Imagem exportada');
+    } catch (error) {
+      console.error('[export] falha ao compor a imagem:', error);
+      toast.error('Não foi possível gerar a imagem');
     }
   };
 
