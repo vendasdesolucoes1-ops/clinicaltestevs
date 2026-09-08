@@ -8,6 +8,8 @@ interface Meshy3DState {
   progress: number;
   status: 'idle' | 'creating' | 'processing' | 'finalizing' | 'completed' | 'error';
   error: string | null;
+  /** A Meshy recusou por plano: repetir não muda o resultado. */
+  planBlocked: boolean;
 }
 
 interface MeshyScanResult {
@@ -22,6 +24,59 @@ interface MeshyScanResult {
   created_at: string;
 }
 
+/**
+ * Mensagem real de uma falha de `supabase.functions.invoke`.
+ *
+ * O `FunctionsHttpError` traz sempre o mesmo texto genérico ("Edge Function returned a
+ * non-2xx status code") e guarda a resposta em `context`. Sem ler o `context`, o motivo
+ * — plano da Meshy esgotado, chave ausente, imagem inacessível — nunca chega à tela.
+ *
+ * `planBlocked` distingue "não adianta tentar de novo" de falha transitória.
+ */
+async function describeInvokeError(
+  err: unknown,
+): Promise<{ message: string; planBlocked: boolean }> {
+  const context = (err as { context?: unknown })?.context;
+
+  if (context instanceof Response) {
+    const status = context.status;
+    let detail = '';
+
+    try {
+      const body = await context.clone().text();
+      if (body) {
+        try {
+          const parsed = JSON.parse(body) as { error?: string; message?: string };
+          detail = parsed.error || parsed.message || body;
+        } catch {
+          detail = body;
+        }
+      }
+    } catch {
+      // Corpo já consumido ou ilegível: resta o status.
+    }
+
+    // 402 é decisão de plano da Meshy, não falha transitória: repetir não resolve.
+    if (status === 402 || /no longer supported|NoMorePendingTasks/i.test(detail)) {
+      return {
+        message:
+          'O plano da Meshy não permite mais gerar modelos 3D. Use a malha reconstruída a partir da foto.',
+        planBlocked: true,
+      };
+    }
+
+    return {
+      message: detail ? `Meshy (${status}): ${detail}` : `Meshy respondeu ${status}`,
+      planBlocked: false,
+    };
+  }
+
+  return {
+    message: err instanceof Error ? err.message : 'Erro desconhecido',
+    planBlocked: false,
+  };
+}
+
 export function useMeshy3D(onSuccess?: (scan: MeshyScanResult) => void) {
   const [state, setState] = useState<Meshy3DState>({
     isGenerating: false,
@@ -29,6 +84,7 @@ export function useMeshy3D(onSuccess?: (scan: MeshyScanResult) => void) {
     progress: 0,
     status: 'idle',
     error: null,
+    planBlocked: false,
   });
 
   const pollTaskStatus = useCallback(async (taskId: string, caseId: string) => {
@@ -79,6 +135,7 @@ export function useMeshy3D(onSuccess?: (scan: MeshyScanResult) => void) {
             progress: 100,
             status: 'completed',
             error: null,
+            planBlocked: false,
           });
 
           toast.success('Modelo 3D gerado com sucesso!');
@@ -94,13 +151,15 @@ export function useMeshy3D(onSuccess?: (scan: MeshyScanResult) => void) {
         setTimeout(poll, 5000);
       } catch (err) {
         console.error('Polling error:', err);
+        const { message, planBlocked } = await describeInvokeError(err);
         setState(prev => ({
           ...prev,
           isGenerating: false,
           status: 'error',
-          error: err instanceof Error ? err.message : 'Erro ao verificar status',
+          error: message,
+          planBlocked,
         }));
-        toast.error('Erro ao gerar modelo 3D');
+        toast.error('Erro ao gerar modelo 3D', { description: message });
       }
     };
 
@@ -119,6 +178,7 @@ export function useMeshy3D(onSuccess?: (scan: MeshyScanResult) => void) {
       progress: 0,
       status: 'creating',
       error: null,
+      planBlocked: false,
     });
 
     try {
@@ -146,13 +206,15 @@ export function useMeshy3D(onSuccess?: (scan: MeshyScanResult) => void) {
       await pollTaskStatus(data.task_id, caseId);
     } catch (err) {
       console.error('Generate model error:', err);
+      const { message, planBlocked } = await describeInvokeError(err);
       setState(prev => ({
         ...prev,
         isGenerating: false,
         status: 'error',
-        error: err instanceof Error ? err.message : 'Erro desconhecido',
+        error: message,
+        planBlocked,
       }));
-      toast.error('Erro ao iniciar geração do modelo 3D');
+      toast.error('Erro ao iniciar geração do modelo 3D', { description: message });
     }
   }, [pollTaskStatus]);
 
@@ -163,6 +225,7 @@ export function useMeshy3D(onSuccess?: (scan: MeshyScanResult) => void) {
       progress: 0,
       status: 'idle',
       error: null,
+      planBlocked: false,
     });
   }, []);
 

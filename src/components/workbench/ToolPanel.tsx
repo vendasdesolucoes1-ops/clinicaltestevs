@@ -163,6 +163,7 @@ interface ToolPanelProps {
   generation3DProgress?: number;
   generation3DStatus?: 'idle' | 'creating' | 'processing' | 'finalizing' | 'completed' | 'error';
   generation3DError?: string | null;
+  generation3DPlanBlocked?: boolean;
   hasExisting3DScan?: boolean;
   hasImage?: boolean;
 }
@@ -304,6 +305,7 @@ export function ToolPanel({
   generation3DProgress,
   generation3DStatus,
   generation3DError,
+  generation3DPlanBlocked,
   hasExisting3DScan,
   hasImage,
 }: ToolPanelProps) {
@@ -736,6 +738,7 @@ export function ToolPanel({
                   progress={generation3DProgress || 0}
                   status={generation3DStatus || 'idle'}
                   error={generation3DError || null}
+                  planBlocked={generation3DPlanBlocked || false}
                   hasExistingScan={hasExisting3DScan || false}
                   hasImage={hasImage !== false}
                   onGenerate={onGenerate3D || (() => {})}

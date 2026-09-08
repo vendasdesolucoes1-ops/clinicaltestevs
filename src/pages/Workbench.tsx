@@ -36,6 +36,7 @@ import { useMeshy3D } from '@/hooks/useMeshy3D';
 import { supabase } from '@/integrations/supabase/client';
 import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockData';
 import { resolveSignedUrl, resolveSignedUrls } from '@/lib/storageUrls';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { toast } from 'sonner';
 import { MEDIAPIPE_FACE_TESSELLATION } from '@/types/mediapipeTessellation';
 import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
@@ -44,6 +45,19 @@ import { isLandmarkVisible } from '@/types/mediapipeMeshPresets';
 import type { Landmark3D, TriangleFace } from '@/types/faceMesh3D';
 
 type ViewMode = '2d' | '3d' | 'compare';
+
+/** Mostrado no lugar do visualizador quando o recurso 3D não carrega. */
+function Model3DUnavailable() {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-8 text-center">
+      <Box className="h-10 w-10 text-muted-foreground" />
+      <p className="text-sm font-medium text-foreground">Não foi possível carregar o 3D</p>
+      <p className="max-w-xs text-xs text-muted-foreground">
+        Rode a análise facial na foto para reconstruir a superfície a partir dos landmarks.
+      </p>
+    </div>
+  );
+}
 
 export default function Workbench() {
   const { id } = useParams();
@@ -167,6 +181,7 @@ export default function Workbench() {
     progress: generation3DProgress,
     status: generation3DStatus,
     error: generation3DError,
+    planBlocked: is3DPlanBlocked,
     generateModel: generateMeshy3D,
   } = useMeshy3D(() => {
     // When a new scan is generated, refresh the scans list
@@ -979,27 +994,49 @@ export default function Workbench() {
           {viewMode === '3d' && (
             <>
               {active3DScan ? (
-                <PatientModelViewer
-                  modelUrl={active3DScan.file_url}
-                  landmarks2D={mediaPipeMeshData?.points?.map(p => ({ x: p.x, y: p.y, z: p.z }))}
-                  connections={mediaPipeMeshData?.connections}
-                  landmarkVisualStyle={mediaPipeMeshVisualStyle}
-                />
+                // O .glb é carregado por suspense: se a URL não resolver (assinatura
+                // expirada, arquivo ausente), o erro sobe como erro de render. A barreira
+                // devolve a superfície reconstruída, que não depende de arquivo externo.
+                <ErrorBoundary
+                  resetKey={active3DScan.file_url}
+                  fallback={
+                    mesh3DData.landmarks.length > 0 ? (
+                      <FaceMesh3D
+                        landmarks={mesh3DData.landmarks}
+                        faces={mesh3DData.faces}
+                        imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
+                      />
+                    ) : (
+                      <Model3DUnavailable />
+                    )
+                  }
+                >
+                  <PatientModelViewer
+                    modelUrl={active3DScan.file_url}
+                    landmarks2D={mediaPipeMeshData?.points?.map(p => ({ x: p.x, y: p.y, z: p.z }))}
+                    connections={mediaPipeMeshData?.connections}
+                    landmarkVisualStyle={mediaPipeMeshVisualStyle}
+                  />
+                </ErrorBoundary>
               ) : mesh3DData.landmarks.length > 0 ? (
                 // Superfície reconstruída dos landmarks detectados, texturizada com a
                 // própria foto. Não exige gerar modelo: existe assim que há análise, e
                 // acompanha a deformação aplicada no 2D.
-                <FaceMesh3D
-                  landmarks={mesh3DData.landmarks}
-                  faces={mesh3DData.faces}
-                  imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
-                />
+                <ErrorBoundary resetKey={currentImageUrl} fallback={<Model3DUnavailable />}>
+                  <FaceMesh3D
+                    landmarks={mesh3DData.landmarks}
+                    faces={mesh3DData.faces}
+                    imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
+                  />
+                </ErrorBoundary>
               ) : (
-                <Viewer3D 
-                  modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
-                  imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
-                  isProcessing={mediaPipeStatus === 'processing' || is3DGenerating}
-                />
+                <ErrorBoundary resetKey={currentImageUrl} fallback={<Model3DUnavailable />}>
+                  <Viewer3D 
+                    modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
+                    imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
+                    isProcessing={mediaPipeStatus === 'processing' || is3DGenerating}
+                  />
+                </ErrorBoundary>
               )}
               
               {/* 3D Generation CTA Overlay */}
@@ -1136,6 +1173,7 @@ export default function Workbench() {
             generation3DProgress={generation3DProgress}
             generation3DStatus={generation3DStatus}
             generation3DError={generation3DError}
+            generation3DPlanBlocked={is3DPlanBlocked}
             hasExisting3DScan={!!active3DScan}
             hasImage={currentImageUrl !== '/placeholder.svg'}
           />

@@ -8,6 +8,8 @@ interface Generate3DButtonProps {
   progress: number;
   status: 'idle' | 'creating' | 'processing' | 'finalizing' | 'completed' | 'error';
   error: string | null;
+  /** A Meshy recusou por plano: o botão deixa de convidar a repetir. */
+  planBlocked?: boolean;
   hasExistingScan: boolean;
   hasImage: boolean;
   onGenerate: () => void;
@@ -18,6 +20,7 @@ export function Generate3DButton({
   progress,
   status,
   error,
+  planBlocked = false,
   hasExistingScan,
   hasImage,
   onGenerate,
@@ -33,7 +36,7 @@ export function Generate3DButton({
       case 'completed':
         return 'Modelo gerado!';
       case 'error':
-        return 'Erro na geração';
+        return planBlocked ? 'Indisponível no plano atual' : 'Erro na geração';
       default:
         return hasExistingScan ? 'Regenerar Modelo 3D' : 'Gerar Modelo 3D';
     }
@@ -56,7 +59,7 @@ export function Generate3DButton({
     <div className="space-y-2">
       <Button
         onClick={onGenerate}
-        disabled={isGenerating || !hasImage}
+        disabled={isGenerating || !hasImage || planBlocked}
         variant={hasExistingScan ? 'outline' : 'default'}
         className={cn(
           'w-full gap-2',
