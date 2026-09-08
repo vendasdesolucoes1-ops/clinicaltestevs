@@ -37,7 +37,13 @@ interface UseMediaPipeMeshReturn {
   errorMessage: string | null;
 
   // Actions
-  triggerAnalysis: (caseId: string, imageUrl: string, photoId?: string) => Promise<void>;
+  // Devolve o mesh detectado, ou null se a detecção falhou — quem chama precisa saber,
+  // para não registrar uma versão de análise que não produziu resultado.
+  triggerAnalysis: (
+    caseId: string,
+    imageUrl: string,
+    photoId?: string,
+  ) => Promise<MediaPipeMeshData | null>;
   clearMesh: () => void;
 }
 
@@ -62,7 +68,7 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
   }, []);
 
   const triggerAnalysis = useCallback(
-    async (caseId: string, imageUrl: string, photoId?: string) => {
+    async (caseId: string, imageUrl: string, photoId?: string): Promise<MediaPipeMeshData | null> => {
       const runId = ++runIdRef.current;
 
       setStatus('processing');
@@ -73,7 +79,7 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
         const mesh = await detectFaceLandmarks(imageUrl);
 
         // Outra análise começou (ou o mesh foi limpo) enquanto esta rodava.
-        if (runId !== runIdRef.current) return;
+        if (runId !== runIdRef.current) return null;
 
         setMeshData(mesh);
         setStatus('completed');
@@ -102,8 +108,10 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
             });
           }
         }
+
+        return mesh;
       } catch (error) {
-        if (runId !== runIdRef.current) return;
+        if (runId !== runIdRef.current) return null;
 
         const message =
           error instanceof NoFaceDetectedError
@@ -116,6 +124,7 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
         setStatus('failed');
         setErrorMessage(message);
         toast.error('Não foi possível detectar o mesh facial', { description: message });
+        return null;
       }
     },
     [],

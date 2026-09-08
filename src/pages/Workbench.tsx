@@ -726,7 +726,11 @@ export default function Workbench() {
       return;
     }
 
-    await triggerMediaPipeAnalysis(caseData.id, currentImageUrl, currentPhotoId);
+    const mesh = await triggerMediaPipeAnalysis(caseData.id, currentImageUrl, currentPhotoId);
+
+    // Sem mesh não há o que registrar: criar a versão assim mesmo encheria o histórico
+    // do caso de análises vazias. O erro já foi comunicado pelo hook.
+    if (!mesh) return;
 
     const versionName = `Análise Facial ${new Date().toLocaleString('pt-BR', {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
