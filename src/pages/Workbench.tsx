@@ -38,7 +38,7 @@ import { type ClinicalCase, type CaseVersion, type CasePhoto } from '@/lib/mockD
 import { resolveSignedUrl, resolveSignedUrls } from '@/lib/storageUrls';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { toast } from 'sonner';
-import { MEDIAPIPE_FACE_TESSELLATION } from '@/types/mediapipeTessellation';
+import { getFaceTessellation } from '@/types/mediapipeTessellation';
 import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
 import type { MediaPipeMeshData } from '@/types/mediapipeMesh';
 import { isLandmarkVisible } from '@/types/mediapipeMeshPresets';
@@ -225,7 +225,13 @@ export default function Workbench() {
       return {
         x: (displacedX - 0.5) * 2,  // Center and scale X: 0-1 -> -1 to 1
         y: -(displacedY - 0.5) * 2, // Center, scale and flip Y
-        z: (point.z ?? 0) * 0.5,    // Profundidade preservada: a manobra é 2D
+        // Duas correções na mesma linha. O MediaPipe usa "menor z = mais perto da
+        // câmera"; no three.js é o contrário, então sem inverter o sinal o nariz vai
+        // para trás e o rosto renderiza côncavo. E o z vem na mesma escala do x: medido
+        // nesta foto, amplitude z=0,180 contra x=0,234 e y=0,240. Escalar por 0,5
+        // enquanto x e y vão por 2 achatava a profundidade em 4x — um relevo, não uma
+        // cabeça. A profundidade é a do detector; a manobra do warp continua 2D.
+        z: -(point.z ?? 0) * 2,
         // A UV usa a coordenada ORIGINAL: assim a textura acompanha o estiramento da
         // malha, em vez de deslizar sobre ela — mesmo princípio da deformação 2D.
         originalX: point.x,
@@ -235,9 +241,19 @@ export default function Workbench() {
 
     // Filter valid tessellation triangles (indices must exist in landmarks)
     const maxIndex = landmarks.length - 1;
-    const faces: TriangleFace[] = MEDIAPIPE_FACE_TESSELLATION.filter(
-      ([a, b, c]) => a <= maxIndex && b <= maxIndex && c <= maxIndex
-    );
+    const faces: TriangleFace[] = getFaceTessellation()
+      .filter(([a, b, c]) => a <= maxIndex && b <= maxIndex && c <= maxIndex)
+      // A tessellação vem com os índices em ordem crescente, não com orientação
+      // geométrica. `computeVertexNormals` depende do sentido de cada triângulo: com
+      // sentidos misturados a iluminação sai manchada, com facetas pretas. De frente o
+      // rosto é uma superfície sobre o plano XY, então o sinal da área projetada basta
+      // para orientar todos no mesmo sentido.
+      .map(([a, b, c]) => {
+        const area =
+          (landmarks[b].x - landmarks[a].x) * (landmarks[c].y - landmarks[a].y) -
+          (landmarks[c].x - landmarks[a].x) * (landmarks[b].y - landmarks[a].y);
+        return (area < 0 ? [a, c, b] : [a, b, c]) as TriangleFace;
+      });
 
     return { landmarks, faces };
   }, [mediaPipeMeshData, warpDisplacements]);

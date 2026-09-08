@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 
 import { type MeshVisualStyle, type MeshMeasurement, type MeshAngleMeasurement } from './MediaPipeMeshRenderer';
 import { warpFace, type DisplacementMap } from '@/lib/faceWarp';
-import { MEDIAPIPE_FACE_TESSELLATION } from '@/types/mediapipeTessellation';
+import { getFaceTessellation } from '@/types/mediapipeTessellation';
 
 interface SimulationCanvasProps {
   imageUrl: string;
@@ -450,7 +450,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         image: original,
         landmarks,
         displacements: warpDisplacements,
-        triangles: MEDIAPIPE_FACE_TESSELLATION,
+        triangles: getFaceTessellation(),
         target: warpCanvasRef.current ?? undefined,
       });
 
