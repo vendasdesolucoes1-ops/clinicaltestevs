@@ -15,6 +15,7 @@ import { ToolPanel, type ToolType } from '@/components/workbench/ToolPanel';
 import { SimulationCanvas, SimulationCanvasRef } from '@/components/workbench/SimulationCanvas';
 import { Viewer3D } from '@/components/workbench/Viewer3D';
 import { PatientModelViewer } from '@/components/workbench/PatientModelViewer';
+import FaceMesh3D from '@/components/workbench/FaceMesh3D';
 import { Model3DUpload } from '@/components/workbench/Model3DUpload';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
@@ -186,7 +187,11 @@ export default function Workbench() {
     ).length;
   }, [mediaPipeMeshData, meshDensity]);
 
-  // Convert MediaPipe mesh to 3D landmarks and faces for FaceMesh3D
+  // Converte a malha MediaPipe para a superfície 3D, já com a deformação aplicada.
+  //
+  // A deformação é 2D — um arraste sobre a foto não carrega informação de profundidade —
+  // então ela desloca x e y e deixa z intacto. Na prática: a manobra aparece na superfície
+  // 3D, mas não altera a projeção facial. Mudar projeção exige dado volumétrico real.
   const mesh3DData = useMemo(() => {
     if (!mediaPipeMeshData?.points || mediaPipeMeshData.points.length === 0) {
       return { landmarks: [] as Landmark3D[], faces: [] as TriangleFace[] };
@@ -195,14 +200,21 @@ export default function Workbench() {
     // Convert MediaPipe points to Landmark3D format
     // Flip Y axis and scale Z for better 3D visualization
     // Preserve original coordinates for UV mapping
-    const landmarks: Landmark3D[] = mediaPipeMeshData.points.map(point => ({
-      x: (point.x - 0.5) * 2,  // Center and scale X: 0-1 -> -1 to 1
-      y: -(point.y - 0.5) * 2, // Center, scale and flip Y
-      z: (point.z ?? 0) * 0.5, // Scale Z depth
-      // Preserve original normalized coordinates for UV texture mapping
-      originalX: point.x,
-      originalY: point.y,
-    }));
+    const landmarks: Landmark3D[] = mediaPipeMeshData.points.map((point, index) => {
+      const displacement = warpDisplacements.get(index);
+      const displacedX = point.x + (displacement?.dx ?? 0);
+      const displacedY = point.y + (displacement?.dy ?? 0);
+
+      return {
+        x: (displacedX - 0.5) * 2,  // Center and scale X: 0-1 -> -1 to 1
+        y: -(displacedY - 0.5) * 2, // Center, scale and flip Y
+        z: (point.z ?? 0) * 0.5,    // Profundidade preservada: a manobra é 2D
+        // A UV usa a coordenada ORIGINAL: assim a textura acompanha o estiramento da
+        // malha, em vez de deslizar sobre ela — mesmo princípio da deformação 2D.
+        originalX: point.x,
+        originalY: point.y,
+      };
+    });
 
     // Filter valid tessellation triangles (indices must exist in landmarks)
     const maxIndex = landmarks.length - 1;
@@ -211,7 +223,7 @@ export default function Workbench() {
     );
 
     return { landmarks, faces };
-  }, [mediaPipeMeshData]);
+  }, [mediaPipeMeshData, warpDisplacements]);
 
   // Auto-save mesh edits to database
   useMeshAutoSave({
@@ -953,6 +965,15 @@ export default function Workbench() {
                   connections={mediaPipeMeshData?.connections}
                   landmarkVisualStyle={mediaPipeMeshVisualStyle}
                 />
+              ) : mesh3DData.landmarks.length > 0 ? (
+                // Superfície reconstruída dos landmarks detectados, texturizada com a
+                // própria foto. Não exige gerar modelo: existe assim que há análise, e
+                // acompanha a deformação aplicada no 2D.
+                <FaceMesh3D
+                  landmarks={mesh3DData.landmarks}
+                  faces={mesh3DData.faces}
+                  imageUrl={currentImageUrl !== '/placeholder.svg' ? currentImageUrl : undefined}
+                />
               ) : (
                 <Viewer3D 
                   modelUrl={selectedVersion?.status === 'pronto' ? '#' : undefined}
@@ -962,7 +983,7 @@ export default function Workbench() {
               )}
               
               {/* 3D Generation CTA Overlay */}
-              {!active3DScan && !is3DGenerating && currentImageUrl !== '/placeholder.svg' && (
+              {!active3DScan && mesh3DData.landmarks.length === 0 && !is3DGenerating && currentImageUrl !== '/placeholder.svg' && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-10">
                   <div className="text-center space-y-4 p-8 rounded-xl bg-card border border-border shadow-2xl max-w-sm">
                     <Box className="h-12 w-12 mx-auto text-muted-foreground" />
