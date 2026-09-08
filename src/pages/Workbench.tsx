@@ -39,6 +39,7 @@ import { resolveSignedUrl, resolveSignedUrls } from '@/lib/storageUrls';
 import { toast } from 'sonner';
 import { MEDIAPIPE_FACE_TESSELLATION } from '@/types/mediapipeTessellation';
 import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
+import type { MediaPipeMeshData } from '@/types/mediapipeMesh';
 import { isLandmarkVisible } from '@/types/mediapipeMeshPresets';
 import type { Landmark3D, TriangleFace } from '@/types/faceMesh3D';
 
@@ -103,6 +104,7 @@ export default function Workbench() {
   // Detecção de landmarks MediaPipe, rodando no navegador
   const {
     meshData: mediaPipeMeshData,
+    setMeshData: setMediaPipeMeshData,
     visible: mediaPipeMeshVisible,
     setVisible: setMediaPipeMeshVisible,
     opacity: mediaPipeMeshOpacity,
@@ -355,18 +357,7 @@ export default function Workbench() {
             .eq('photo_id', frontPhoto.id)
             .maybeSingle();
 
-          // RUNTIME SAFETY: Only load analysis if status is landmarks_ready AND points is a valid array
-          if (existingAnalysis && 
-              existingAnalysis.status === 'landmarks_ready' && 
-              Array.isArray(existingAnalysis.points) && 
-              existingAnalysis.points.length > 0) {
-            // Load existing mesh data
-            loadExistingAnalysis({
-              points: existingAnalysis.points as any,
-              faceROI: existingAnalysis.face_roi as any,
-              midlinePoints: Array.isArray(existingAnalysis.midline_points) ? existingAnalysis.midline_points : [],
-              customConnections: Array.isArray(existingAnalysis.custom_connections) ? existingAnalysis.custom_connections as any : [],
-            });
+          if (restoreAnalysis(existingAnalysis)) {
             toast.info('Análise facial carregada');
           }
           // No automatic analysis trigger - user must click "Gerar Análise Facial" button
@@ -745,6 +736,44 @@ export default function Workbench() {
     }
   }, []);
 
+  // Restaura uma análise salva. Há dois formatos gravados em `facial_analyses`:
+  // `mesh` (os 478 pontos do MediaPipe, formato atual) e `points` (landmarks anatômicos
+  // nomeados, da edge function Gemini). São complementares e independentes — carregar só
+  // um deixava a análise parecendo perdida ao recarregar a página.
+  const restoreAnalysis = useCallback((analysis: {
+    mesh?: unknown;
+    points?: unknown;
+    face_roi?: unknown;
+    midline_points?: unknown;
+    custom_connections?: unknown;
+    status?: string | null;
+  } | null): boolean => {
+    if (!analysis || analysis.status !== 'landmarks_ready') return false;
+
+    let restored = false;
+
+    const mesh = analysis.mesh as MediaPipeMeshData | null | undefined;
+    if (mesh && Array.isArray(mesh.points) && mesh.points.length > 0) {
+      setMediaPipeMeshData({
+        points: mesh.points,
+        connections: Array.isArray(mesh.connections) ? mesh.connections : [],
+      });
+      restored = true;
+    }
+
+    if (Array.isArray(analysis.points) && analysis.points.length > 0) {
+      loadExistingAnalysis({
+        points: analysis.points as any,
+        faceROI: analysis.face_roi as any,
+        midlinePoints: Array.isArray(analysis.midline_points) ? analysis.midline_points : [],
+        customConnections: Array.isArray(analysis.custom_connections) ? analysis.custom_connections as any : [],
+      });
+      restored = true;
+    }
+
+    return restored;
+  }, [setMediaPipeMeshData, loadExistingAnalysis]);
+
   // PR-4: repassa o arraste ao motor de deformação, usando os landmarks já detectados.
   const handleWarpPull = useCallback((pointIndex: number, dx: number, dy: number) => {
     if (!mediaPipeMeshData?.points?.length) return;
@@ -814,20 +843,11 @@ export default function Workbench() {
         .eq('photo_id', photo.id)
         .maybeSingle();
       
-      if (existingAnalysis && 
-          existingAnalysis.status === 'landmarks_ready' && 
-          Array.isArray(existingAnalysis.points) && 
-          existingAnalysis.points.length > 0) {
-        loadExistingAnalysis({
-          points: existingAnalysis.points as any,
-          faceROI: existingAnalysis.face_roi as any,
-          midlinePoints: Array.isArray(existingAnalysis.midline_points) ? existingAnalysis.midline_points : [],
-          customConnections: Array.isArray(existingAnalysis.custom_connections) ? existingAnalysis.custom_connections as any : [],
-        });
+      if (restoreAnalysis(existingAnalysis)) {
         toast.info('Análise facial carregada');
       }
     }
-  }, [analyzedPhotoIds, clearMesh, loadExistingAnalysis]);
+  }, [analyzedPhotoIds, clearMesh, restoreAnalysis]);
 
   // Handle 3D model generation with Meshy AI
   const handleGenerate3D = useCallback(() => {
