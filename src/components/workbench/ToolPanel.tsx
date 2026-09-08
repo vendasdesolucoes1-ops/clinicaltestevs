@@ -64,7 +64,6 @@ import { type MeshDensity, type SymmetryResult, MESH_PRESETS } from '@/types/fac
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { type MeshVisualStyle } from './MediaPipeMeshRenderer';
 import { SymmetryIndicator } from './SymmetryIndicator';
-import { WorkflowProgressPanel } from './WorkflowProgressPanel';
 import { AnalysisHistory } from './AnalysisHistory';
 import { Generate3DButton } from './Generate3DButton';
 import { AnatomicalMeasurementsPanel } from './AnatomicalMeasurements';
@@ -91,7 +90,7 @@ interface ToolPanelProps {
   canUndo: boolean;
   canRedo: boolean;
 
-  // Simulation via n8n
+  // Detecção de landmarks (MediaPipe, no navegador)
   isSimulating: boolean;
   onTriggerSimulation: (targetVersion: 'A' | 'B') => void;
 
@@ -137,7 +136,7 @@ interface ToolPanelProps {
   isMeshAILoading?: boolean;
 
   // AI-1: análise direta pela edge function `analyze-face` (Gemini), independente do
-  // fluxo n8n disparado na criação do caso.
+  // mesh geométrico do MediaPipe.
   onAnalyzeDirect?: () => void;
   
   // Active points counter
@@ -533,7 +532,7 @@ export function ToolPanel({
                   </div>
                 )}
 
-                {/* AI-1: Análise direta (Gemini), independente do fluxo n8n */}
+                {/* AI-1: landmarks anatômicos nomeados via Gemini */}
                 {onAnalyzeDirect && (
                   <div className="pt-1">
                     <Tooltip>
@@ -557,7 +556,7 @@ export function ToolPanel({
                         <p className="text-xs">
                           Caminho independente: analisa a foto atual direto pelo Gemini
                           (edge function <span className="font-mono">analyze-face</span>),
-                          sem passar pelo fluxo n8n disparado na criação do caso.
+                          Complementa o mesh geométrico com pontos anatômicos nomeados.
                           Pontos em laranja indicam baixa confiança do detector.
                         </p>
                       </TooltipContent>
@@ -954,26 +953,6 @@ export function ToolPanel({
               </span>
             </div>
           </div>
-
-          {/* Workflow */}
-          {caseId && (
-            <AccordionItem value="workflow" className="border-b border-border">
-              <AccordionTrigger className="px-3 py-2.5 text-xs">
-                <span className="flex items-center gap-2">
-                  <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-                  Workflow n8n
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-0 pb-0">
-                <WorkflowProgressPanel
-                  caseId={caseId}
-                  onRetry={onRetryAnalysis}
-                  onCancel={onCancelAnalysis}
-                  className="border-b-0"
-                />
-              </AccordionContent>
-            </AccordionItem>
-          )}
 
           {/* Histórico */}
           {caseId && onLoadAnalysis && (

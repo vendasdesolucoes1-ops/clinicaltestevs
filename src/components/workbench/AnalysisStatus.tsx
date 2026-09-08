@@ -3,7 +3,7 @@ import { Loader2, AlertCircle, CheckCircle2, RefreshCw, Clock, X } from 'lucide-
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
-import type { AnalysisJobStatus } from '@/hooks/useN8nFacialAnalysis';
+import type { AnalysisStatus as AnalysisJobStatus } from '@/hooks/useMediaPipeMesh';
 
 interface AnalysisStatusProps {
   status: AnalysisJobStatus;

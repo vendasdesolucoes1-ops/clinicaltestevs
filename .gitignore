@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Binários WASM do MediaPipe: copiados de node_modules pelo prebuild
+# (scripts/copy-mediapipe-assets.mjs), ~19 MB, não versionados.
+public/mediapipe/wasm/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

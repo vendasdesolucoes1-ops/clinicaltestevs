@@ -1,9 +1,14 @@
-// Hook para gerenciar o estado do mesh MediaPipe
+// Hook para gerenciar o mesh facial MediaPipe.
+//
+// A detecção roda no próprio navegador (src/lib/faceLandmarker.ts). Antes este hook
+// disparava um webhook n8n e ficava consultando `facial_analysis_jobs` a cada 3s por até
+// 3 minutos; agora o resultado chega em milissegundos, sem fila, sem job e sem serviço
+// externo. O resultado é gravado em `facial_analyses` para sobreviver ao reload.
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { N8N_FACIAL_ANALYSIS_WEBHOOK, POLLING_INTERVAL_MS, MAX_POLLING_ATTEMPTS } from '@/lib/config';
 import { toast } from 'sonner';
-import { MediaPipeMeshData, MediaPipeWebhookResponse } from '@/types/mediapipeMesh';
+import { detectFaceLandmarks, NoFaceDetectedError } from '@/lib/faceLandmarker';
+import { MediaPipeMeshData } from '@/types/mediapipeMesh';
 import { type MeshDensity } from '@/types/facialLandmarks';
 
 export type MeshVisualStyle = 'minimal' | 'standard' | 'detailed';
@@ -16,7 +21,7 @@ interface UseMediaPipeMeshReturn {
   // Mesh data
   meshData: MediaPipeMeshData | null;
   setMeshData: (data: MediaPipeMeshData | null) => void;
-  
+
   // UI controls
   visible: boolean;
   setVisible: (visible: boolean) => void;
@@ -26,11 +31,11 @@ interface UseMediaPipeMeshReturn {
   setDensity: (density: MeshDensity) => void;
   visualStyle: MeshVisualStyle;
   setVisualStyle: (style: MeshVisualStyle) => void;
-  
+
   // Analysis state
   status: AnalysisStatus;
   errorMessage: string | null;
-  
+
   // Actions
   triggerAnalysis: (caseId: string, imageUrl: string, photoId?: string) => Promise<void>;
   clearMesh: () => void;
@@ -44,163 +49,77 @@ export const useMediaPipeMesh = (): UseMediaPipeMeshReturn => {
   const [visualStyle, setVisualStyle] = useState<MeshVisualStyle>('minimal');
   const [status, setStatus] = useState<AnalysisStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingCountRef = useRef(0);
-  const currentJobIdRef = useRef<string | null>(null);
 
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    pollingCountRef.current = 0;
-  }, []);
+  // Evita que um resultado antigo sobrescreva o mesh se o usuário trocar de foto
+  // enquanto a análise anterior ainda está rodando.
+  const runIdRef = useRef(0);
 
   const clearMesh = useCallback(() => {
-    stopPolling();
+    runIdRef.current += 1;
     setMeshData(null);
     setStatus('idle');
     setErrorMessage(null);
-    currentJobIdRef.current = null;
-  }, [stopPolling]);
+  }, []);
 
-  // Poll job status and fetch results when completed
-  // Polling por case_id (job mais recente)
-  const pollJobStatus = useCallback(async (caseId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('facial_analysis_jobs')
-        .select('status, error_message, job_id')
-        .eq('case_id', caseId)
-        .order('timestamp_start', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+  const triggerAnalysis = useCallback(
+    async (caseId: string, imageUrl: string, photoId?: string) => {
+      const runId = ++runIdRef.current;
 
-      if (error) {
-        console.error('Erro ao verificar status:', error);
-        return;
-      }
-
-      if (data) {
-        if (data.status === 'success') {
-          stopPolling();
-          
-          // Fetch the mesh data from facial_analyses
-          const { data: analysisData, error: analysisError } = await supabase
-            .from('facial_analyses')
-            .select('mesh')
-            .eq('case_id', currentJobIdRef.current)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-
-          if (!analysisError && analysisData?.mesh) {
-            const mesh = analysisData.mesh as any;
-            if (mesh.points && Array.isArray(mesh.points)) {
-              setMeshData({
-                points: mesh.points,
-                connections: mesh.connections || [],
-              });
-              setStatus('completed');
-              toast.success('Mesh facial carregado!', {
-                description: `${mesh.points.length} pontos detectados.`
-              });
-              return;
-            }
-          }
-          
-          // Fallback if no mesh in DB
-          setStatus('completed');
-          toast.success('Análise concluída!');
-          
-        } else if (data.status === 'failed') {
-          stopPolling();
-          setStatus('failed');
-          setErrorMessage(data.error_message || 'Erro desconhecido');
-          toast.error('Análise falhou', {
-            description: data.error_message || 'Erro durante o processamento.'
-          });
-        }
-      }
-
-      // Check polling limit
-      pollingCountRef.current++;
-      if (pollingCountRef.current >= MAX_POLLING_ATTEMPTS) {
-        stopPolling();
-        setStatus('failed');
-        setErrorMessage('Tempo limite excedido');
-        toast.error('Tempo limite excedido', {
-          description: 'A análise está demorando muito. Tente novamente.'
-        });
-      }
-    } catch (err) {
-      console.error('Erro no polling:', err);
-    }
-  }, [stopPolling]);
-
-  const triggerAnalysis = useCallback(async (caseId: string, imageUrl: string, photoId?: string) => {
-    try {
       setStatus('processing');
       setErrorMessage(null);
       setMeshData(null);
-      
-      currentJobIdRef.current = caseId;
 
-      toast.info('Iniciando análise facial...', {
-        description: 'O mesh será renderizado automaticamente.'
-      });
-
-      // Send to n8n webhook
-      console.log('[MediaPipeMesh] Sending to n8n:', { case_id: caseId, photo_id: photoId, image_url: imageUrl, mode: 'clinical' });
-      
-      const response = await fetch(N8N_FACIAL_ANALYSIS_WEBHOOK, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          case_id: caseId,
-          photo_id: photoId,
-          image_url: imageUrl,
-          mode: 'clinical',
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      // Check if response has immediate mesh data
       try {
-        const responseData: MediaPipeWebhookResponse = await response.json();
-        
-        if (responseData.status === 'success' && responseData.face_mesh) {
-          // Immediate response with mesh data!
-          setMeshData(responseData.face_mesh);
-          setStatus('completed');
-          toast.success('Mesh facial carregado!', {
-            description: `${responseData.face_mesh.points.length} pontos detectados.`
-          });
-          return;
+        const mesh = await detectFaceLandmarks(imageUrl);
+
+        // Outra análise começou (ou o mesh foi limpo) enquanto esta rodava.
+        if (runId !== runIdRef.current) return;
+
+        setMeshData(mesh);
+        setStatus('completed');
+        toast.success('Mesh facial detectado!', {
+          description: `${mesh.points.length} landmarks identificados.`,
+        });
+
+        // Persistência é acessória: se falhar, a análise segue válida na tela.
+        if (photoId) {
+          const { error } = await supabase.from('facial_analyses').upsert(
+            {
+              case_id: caseId,
+              photo_id: photoId,
+              // Mesmo padrão de serialização usado em useMeshAutoSave para colunas jsonb.
+              mesh: JSON.parse(JSON.stringify(mesh)),
+              status: 'landmarks_ready',
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'photo_id' },
+          );
+
+          if (error) {
+            console.error('[MediaPipe] Falha ao salvar o mesh:', error);
+            toast.warning('Mesh detectado, mas não foi salvo', {
+              description: 'Ele continua visível nesta sessão. Tente analisar novamente.',
+            });
+          }
         }
-      } catch {
-        // Response não é JSON - provavelmente processamento assíncrono
+      } catch (error) {
+        if (runId !== runIdRef.current) return;
+
+        const message =
+          error instanceof NoFaceDetectedError
+            ? 'Nenhum rosto detectado. Verifique se a foto mostra a face de frente e com boa iluminação.'
+            : error instanceof Error
+              ? error.message
+              : 'Erro desconhecido durante a detecção.';
+
+        console.error('[MediaPipe] Erro na detecção:', error);
+        setStatus('failed');
+        setErrorMessage(message);
+        toast.error('Não foi possível detectar o mesh facial', { description: message });
       }
-
-      // Start polling for async processing (por case_id)
-      pollingCountRef.current = 0;
-      pollingRef.current = setInterval(() => {
-        pollJobStatus(caseId);
-      }, POLLING_INTERVAL_MS);
-
-    } catch (error) {
-      console.error('Erro ao disparar análise:', error);
-      setStatus('failed');
-      setErrorMessage(error instanceof Error ? error.message : 'Erro desconhecido');
-      toast.error('Erro ao iniciar análise', {
-        description: 'Não foi possível conectar ao serviço.'
-      });
-    }
-  }, [pollJobStatus]);
+    },
+    [],
+  );
 
   return {
     meshData,
