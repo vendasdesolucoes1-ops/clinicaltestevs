@@ -26,6 +26,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useCanvasState } from '@/hooks/useCanvasState';
 import { useFacialAnalysis } from '@/hooks/useFacialAnalysis';
 import { useMediaPipeMesh } from '@/hooks/useMediaPipeMesh';
+import { useFaceWarp } from '@/hooks/useFaceWarp';
 import { useSymmetryAnalysis } from '@/hooks/useSymmetryAnalysis';
 import { useMeshAutoSave } from '@/hooks/useMeshAutoSave';
 import { useCase3DScans } from '@/hooks/useCase3DScans';
@@ -113,6 +114,19 @@ export default function Workbench() {
     triggerAnalysis: triggerMediaPipeAnalysis,
     clearMesh: clearMediaPipeMesh,
   } = useMediaPipeMesh();
+
+  // PR-4 nível 1: deformação geométrica da face sobre a malha detectada
+  const {
+    displacements: warpDisplacements,
+    hasWarp,
+    displacedPointCount,
+    radius: warpRadius,
+    setRadius: setWarpRadius,
+    intensity: warpIntensity,
+    setIntensity: setWarpIntensity,
+    pull: pullSkin,
+    reset: resetWarp,
+  } = useFaceWarp();
 
   // AI Mesh recommendation
   const {
@@ -712,6 +726,12 @@ export default function Workbench() {
     }
   }, []);
 
+  // PR-4: repassa o arraste ao motor de deformação, usando os landmarks já detectados.
+  const handleWarpPull = useCallback((pointIndex: number, dx: number, dy: number) => {
+    if (!mediaPipeMeshData?.points?.length) return;
+    pullSkin(mediaPipeMeshData.points, pointIndex, dx, dy);
+  }, [mediaPipeMeshData, pullSkin]);
+
   // Reexecuta a detecção sobre a foto atual, sem criar uma nova versão.
   const handleRetryAnalysis = useCallback(async () => {
     if (!caseData || !currentImageUrl || currentImageUrl === '/placeholder.svg') return;
@@ -875,6 +895,8 @@ export default function Workbench() {
             <>
               <SimulationCanvas
                 ref={canvasRef}
+                warpDisplacements={warpDisplacements}
+                onWarpPull={handleWarpPull}
                 imageUrl={currentImageUrl}
                 activeTool={activeTool}
                 isPanMode={isPanMode}
@@ -1046,6 +1068,13 @@ export default function Workbench() {
             currentPhotoAngle={caseData?.photos.find((p) => p.id === currentPhotoId)?.angle}
             onTriggerMeshAI={handleTriggerMeshAI}
             onAnalyzeDirect={handleAnalyzeDirect}
+            warpRadius={warpRadius}
+            onWarpRadiusChange={setWarpRadius}
+            warpIntensity={warpIntensity}
+            onWarpIntensityChange={setWarpIntensity}
+            hasWarp={hasWarp}
+            warpPointCount={displacedPointCount}
+            onResetWarp={resetWarp}
             isMeshAILoading={isMeshAILoading}
             activePointsCount={activePointsCount}
             // 3D Model generation (Meshy AI)

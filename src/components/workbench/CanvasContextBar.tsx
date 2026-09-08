@@ -36,6 +36,10 @@ const TOOL_INSTRUCTIONS: Record<ToolType | 'pan', { action: string; hint: string
     action: 'Selecionar', 
     hint: 'Clique para selecionar • Arraste para mover • Delete para remover' 
   },
+  skin_pull: {
+    action: 'Puxar Pele',
+    hint: 'Arraste sobre o rosto para deslocar a pele • Deformação geométrica, não predição cirúrgica'
+  },
   correction_vector: { 
     action: 'Vetor de Correção', 
     hint: 'Clique e arraste para indicar direção e magnitude da correção' 
