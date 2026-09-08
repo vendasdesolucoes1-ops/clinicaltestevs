@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { EXPERIMENTAL_USE_NOTICE } from '@/lib/config';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -126,6 +127,9 @@ export default function Login() {
               <p className="font-medium text-foreground">Ferramenta clínica interna</p>
               <p className="text-muted-foreground">
                 Uso restrito a profissionais de saúde autorizados.
+              </p>
+              <p className="text-muted-foreground mt-2">
+                {EXPERIMENTAL_USE_NOTICE}
               </p>
             </div>
           </div>

@@ -7,9 +7,11 @@ import {
   Layers,
   Box,
   GitCompare,
-  Keyboard
+  Keyboard,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
@@ -31,6 +33,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { EXPERIMENTAL_USE_NOTICE } from '@/lib/config';
 import type { ClinicalCase, CaseVersion, CasePhoto } from '@/lib/mockData';
 
 type ViewMode = '2d' | '3d' | 'compare';
@@ -177,6 +180,26 @@ export function WorkbenchHeader({
             </Tooltip>
           </TabsList>
         </Tabs>
+
+        {/* PR-1: aviso permanente de uso experimental (sistema não registrado como SaMD) */}
+        <Tooltip>
+          {/* Badge não encaminha ref: o span existe para o asChild do Tooltip ancorar,
+              mesmo padrão já usado no seletor de fotos acima. */}
+          <TooltipTrigger asChild>
+            <span>
+              <Badge
+                variant="outline"
+                className="h-8 gap-1.5 px-2 text-xs font-normal border-warning/40 text-warning cursor-help"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Experimental
+              </Badge>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            {EXPERIMENTAL_USE_NOTICE}
+          </TooltipContent>
+        </Tooltip>
 
         {/* Help Dialog */}
         <Dialog>
