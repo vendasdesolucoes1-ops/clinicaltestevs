@@ -201,7 +201,7 @@ Forneça sua recomendação no formato JSON especificado.`;
         }
       }),
       { 
-        status: 500, 
+        status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
