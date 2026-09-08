@@ -7,7 +7,8 @@ import {
   Move,
   MousePointer2,
   Hand,
-  Info
+  Info,
+  Undo2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -28,6 +29,9 @@ interface CanvasContextBarProps {
   onZoomOut?: () => void;
   onResetView?: () => void;
   onFitToScreen?: () => void;
+  /** Há deformação aplicada: habilita voltar a pele ao original. */
+  hasWarp?: boolean;
+  onResetWarp?: () => void;
   className?: string;
 }
 
@@ -82,6 +86,8 @@ export function CanvasContextBar({
   onZoomOut,
   onResetView,
   onFitToScreen,
+  hasWarp = false,
+  onResetWarp,
   className,
 }: CanvasContextBarProps) {
   const currentTool = isPanMode ? 'pan' : activeTool;
@@ -115,6 +121,23 @@ export function CanvasContextBar({
         <Info className="h-3 w-3 shrink-0" />
         <span className="truncate">{instruction.hint}</span>
       </div>
+
+      {/* Voltar a pele ao original. Fica aqui, ao lado do canvas, porque enterrado no
+          painel de parâmetros ninguém encontra na hora em que precisa. */}
+      {activeTool === 'skin_pull' && hasWarp && (
+        <>
+          <Separator orientation="vertical" className="h-5" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={onResetWarp}
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+            Voltar ao original
+          </Button>
+        </>
+      )}
 
       <Separator orientation="vertical" className="h-5" />
 

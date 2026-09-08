@@ -9,6 +9,7 @@
 // tesselação do MediaPipe é redesenhado da posição original para a deslocada, com recorte.
 // Fora da região facial a imagem permanece intacta.
 
+import { geodesicDistancesFrom } from '@/lib/faceGeodesic';
 import type { MediaPipePoint } from '@/types/mediapipeMesh';
 
 /** Ponto em coordenadas de pixel dentro da imagem de origem. */
@@ -181,6 +182,10 @@ export interface PullOptions {
  * atenuação suave por distância.
  *
  * É a atenuação que produz a sensação de puxar tecido em vez de mover um vértice isolado.
+ *
+ * A distância é medida ANDANDO PELA PELE, não em linha reta: ver `faceGeodesic.ts`. Em
+ * tecido contínuo as duas coincidem, mas a linha reta atravessa as aberturas da face, e
+ * era isso que fazia o lábio inferior acompanhar uma manobra no superior.
  */
 export function computePull(
   landmarks: MediaPipePoint[],
@@ -190,17 +195,25 @@ export function computePull(
   const anchor = landmarks[pointIndex];
   if (!anchor) return current;
 
+  // Pontos de íris não fazem parte da superfície tesselada e não têm caminho pela pele.
+  // Nesse caso a distância volta a ser a euclidiana, preservando o comportamento antigo
+  // em vez de deixar a ferramenta inerte ali.
+  const surfaceDistances = geodesicDistancesFrom(landmarks, pointIndex);
+
   const next: DisplacementMap = new Map(current);
-  const radiusSquared = radius * radius;
 
   landmarks.forEach((point, index) => {
-    const distanceSquared = (point.x - anchor.x) ** 2 + (point.y - anchor.y) ** 2;
-    if (distanceSquared > radiusSquared) return;
+    const distance = surfaceDistances
+      ? surfaceDistances.get(index)
+      : Math.hypot(point.x - anchor.x, point.y - anchor.y);
+
+    // Sem caminho pela pele até aqui (do outro lado de uma abertura, ou fora da malha):
+    // a manobra não alcança este ponto.
+    if (distance === undefined || distance > radius) return;
 
     // Atenuação suave (cosseno elevado): 1 no ponto arrastado, 0 na borda do raio,
     // sem transição abrupta que produziria dobras visíveis na pele.
-    const normalized = Math.sqrt(distanceSquared) / radius;
-    const falloff = (Math.cos(normalized * Math.PI) + 1) / 2;
+    const falloff = (Math.cos((distance / radius) * Math.PI) + 1) / 2;
     const resistance = stiffness?.(index) ?? 1;
     const weight = falloff / Math.max(resistance, 0.01);
 

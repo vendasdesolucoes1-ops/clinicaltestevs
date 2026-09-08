@@ -43,6 +43,8 @@ interface SimulationCanvasProps {
   // PR-4 nível 1: deformação geométrica da face
   warpDisplacements?: DisplacementMap;
   onWarpPull?: (pointIndex: number, dx: number, dy: number) => void;
+  /** Fim do arraste: fecha o passo do histórico. */
+  onWarpPullEnd?: () => void;
   /** Maior deslocamento da manobra em mm, ou null se a foto não está calibrada. */
   onWarpMeasureChange?: (millimeters: number | null) => void;
 }
@@ -193,7 +195,7 @@ const createWarpArrow = (
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull, onWarpMeasureChange }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull, onWarpPullEnd, onWarpMeasureChange }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -207,6 +209,17 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     const sourceImageElRef = useRef<HTMLImageElement | null>(null);
     const warpCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const pullAnchorRef = useRef<{ pointIndex: number; x: number; y: number } | null>(null);
+
+    // As callbacks do warp mudam a cada ajuste de raio, intensidade ou ancoragem — e a
+    // cada quadro do arraste. O efeito que registra os handlers do Fabric não as observa,
+    // então chamá-las direto congelava a versão do primeiro registro: mexer no raio não
+    // tinha efeito até trocar de ferramenta e voltar. A ref sempre aponta para a atual.
+    const onWarpPullRef = useRef(onWarpPull);
+    const onWarpPullEndRef = useRef(onWarpPullEnd);
+    useEffect(() => {
+      onWarpPullRef.current = onWarpPull;
+      onWarpPullEndRef.current = onWarpPullEnd;
+    });
     const [isMouseOverCanvas, setIsMouseOverCanvas] = useState(false);
     
     // For warp tool - track drag start/end
@@ -611,7 +624,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         return Math.sqrt(nearestDistance) > 0.12 ? null : nearestIndex;
       };
 
-      // Handle mouse events for other tools
+    // Handle mouse events for other tools
       const handleMouseDown = (e: any) => {
         const pointer = canvas.getPointer(e.e);
 
@@ -847,7 +860,11 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           warpStartRef.current = null;
         }
 
-        pullAnchorRef.current = null;
+        // Só fecha um passo se o arraste chegou a existir.
+        if (pullAnchorRef.current) {
+          pullAnchorRef.current = null;
+          onWarpPullEndRef.current?.();
+        }
       };
 
       const handleMouseMove = (e: any) => {
@@ -855,7 +872,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         setCursorPosition({ x: pointer.x, y: pointer.y });
 
         const anchor = pullAnchorRef.current;
-        if (activeTool !== 'skin_pull' || !anchor || !onWarpPull) return;
+        if (activeTool !== 'skin_pull' || !anchor || !onWarpPullRef.current) return;
 
         const normalized = toNormalized(pointer);
         const dx = normalized.x - anchor.x;
@@ -865,7 +882,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         // que o deslocamento acompanhe o cursor em vez de multiplicar a cada evento.
         if (Math.hypot(dx, dy) < 0.002) return;
 
-        onWarpPull(anchor.pointIndex, dx, dy);
+        onWarpPullRef.current(anchor.pointIndex, dx, dy);
         pullAnchorRef.current = { ...anchor, x: normalized.x, y: normalized.y };
       };
 
