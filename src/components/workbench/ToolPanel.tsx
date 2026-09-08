@@ -774,6 +774,21 @@ export function ToolPanel({
                 {/* PR-4 nível 1: parâmetros da deformação geométrica */}
                 {activeTool === 'skin_pull' && (
                   <div className="space-y-3">
+                    {/* Primeiro item do painel, não o último: enterrado no fim ele ficava
+                        fora da tela justamente quando era necessário. */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 gap-1.5"
+                      onClick={onResetWarp}
+                      disabled={!hasWarp}
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      <span className="text-xs">
+                        {hasWarp ? `Voltar ao original (${warpPointCount} pontos)` : 'Sem deformação'}
+                      </span>
+                    </Button>
+
                     <div className="flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/20">
                       <Activity className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
                       <p className="text-[10px] text-muted-foreground leading-relaxed">
@@ -869,18 +884,6 @@ export function ToolPanel({
                       </div>
                     </div>
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full h-8 gap-1.5"
-                      onClick={onResetWarp}
-                      disabled={!hasWarp}
-                    >
-                      <Undo2 className="h-3.5 w-3.5" />
-                      <span className="text-xs">
-                        {hasWarp ? `Redefinir (${warpPointCount} pontos)` : 'Sem deformação'}
-                      </span>
-                    </Button>
                   </div>
                 )}
 

@@ -20,7 +20,6 @@ import { Model3DUpload } from '@/components/workbench/Model3DUpload';
 import { ComparisonView } from '@/components/workbench/ComparisonView';
 import { AnalysisStatusBar } from '@/components/workbench/AnalysisStatus';
 import { CollapsiblePanel } from '@/components/workbench/CollapsiblePanel';
-import { CanvasContextBar } from '@/components/workbench/CanvasContextBar';
 import { WorkbenchHeader } from '@/components/workbench/WorkbenchHeader';
 import { MeshRecommendationModal } from '@/components/workbench/MeshRecommendationModal';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -992,6 +991,7 @@ export default function Workbench() {
                 warpDisplacements={warpDisplacements}
                 onWarpPull={handleWarpPull}
                 onWarpPullEnd={commitWarpStroke}
+                warpRadius={warpRadius}
                 onWarpMeasureChange={setWarpMeasureMm}
                 imageUrl={currentImageUrl}
                 activeTool={activeTool}
@@ -1013,13 +1013,7 @@ export default function Workbench() {
               />
               
               {/* Context Bar */}
-              <CanvasContextBar
-                activeTool={activeTool}
-                isPanMode={isPanMode}
-                zoom={100}
-                hasWarp={hasWarp}
-                onResetWarp={handleResetWarp}
-              />
+
             </>
           )}
           

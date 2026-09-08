@@ -1,10 +1,11 @@
 // Professional Simulation Canvas with Fabric.js
-import { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import * as fabric from 'fabric';
 import { ToolType } from './ToolPanel';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasStatusBar } from './CanvasStatusBar';
 import { CanvasRuler } from './CanvasRuler';
+import { geodesicDistancesFrom } from '@/lib/faceGeodesic';
 import { CalibrationOverlay } from './CalibrationOverlay';
 import { FacialMesh } from './FacialMesh';
 import { MediaPipeMeshRenderer } from './MediaPipeMeshRenderer';
@@ -45,6 +46,8 @@ interface SimulationCanvasProps {
   onWarpPull?: (pointIndex: number, dx: number, dy: number) => void;
   /** Fim do arraste: fecha o passo do histórico. */
   onWarpPullEnd?: () => void;
+  /** Raio de influência, para desenhar a prévia sob o cursor. */
+  warpRadius?: number;
   /** Maior deslocamento da manobra em mm, ou null se a foto não está calibrada. */
   onWarpMeasureChange?: (millimeters: number | null) => void;
 }
@@ -195,7 +198,7 @@ const createWarpArrow = (
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull, onWarpPullEnd, onWarpMeasureChange }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull, onWarpPullEnd, warpRadius, onWarpMeasureChange }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -1168,6 +1171,52 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       },
     }));
 
+    // Prévia do alcance da manobra (item D): quais landmarks o arraste atingiria a partir
+    // da posição do cursor, e com que peso. Usa exatamente o mesmo critério de computePull
+    // — distância pela pele e atenuação por cosseno — para não prometer na tela um alcance
+    // diferente do que a ferramenta aplica. A ancoragem anatômica não entra aqui: ela
+    // reduz o quanto cada ponto cede, não se ele é alcançado.
+    const warpPreview = useMemo(() => {
+      const landmarks = mediaPipeMeshData?.points;
+      if (activeTool !== 'skin_pull' || !isMouseOverCanvas) return null;
+      if (!landmarks?.length || !warpRadius || !imageBounds.width) return null;
+
+      const normalized = {
+        x: (cursorPosition.x - imageBounds.left) / imageBounds.width,
+        y: (cursorPosition.y - imageBounds.top) / (imageBounds.height || 1),
+      };
+
+      let nearestIndex = -1;
+      let nearestDistance = Infinity;
+      landmarks.forEach((point, index) => {
+        const distance = (point.x - normalized.x) ** 2 + (point.y - normalized.y) ** 2;
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      });
+      // Mesmo limiar do arraste: fora disso o clique não pega o rosto.
+      if (nearestIndex < 0 || Math.sqrt(nearestDistance) > 0.12) return null;
+
+      const surface = geodesicDistancesFrom(landmarks, nearestIndex);
+      const anchor = landmarks[nearestIndex];
+
+      const reached: { x: number; y: number; weight: number }[] = [];
+      landmarks.forEach((point, index) => {
+        const distance = surface
+          ? surface.get(index)
+          : Math.hypot(point.x - anchor.x, point.y - anchor.y);
+        if (distance === undefined || distance > warpRadius) return;
+        reached.push({
+          x: point.x,
+          y: point.y,
+          weight: (Math.cos((distance / warpRadius) * Math.PI) + 1) / 2,
+        });
+      });
+
+      return { anchor, reached };
+    }, [activeTool, isMouseOverCanvas, mediaPipeMeshData, warpRadius, cursorPosition, imageBounds]);
+
     const handleZoomIn = () => {
       const canvas = fabricRef.current;
       if (!canvas) return;
@@ -1697,6 +1746,54 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
                 })()}
               </g>
             )}
+          </svg>
+        )}
+
+        {/* Prévia do alcance da manobra de puxar pele. Os pontos marcados são os que
+            de fato se moveriam: por medir distância pela pele, a região respeita boca e
+            olhos em vez de ser um círculo. O círculo tracejado fica só como referência do
+            raio configurado. */}
+        {warpPreview && (
+          <svg className="absolute inset-0 pointer-events-none z-30" style={{ width: '100%', height: '100%' }}>
+            {(() => {
+              const panX = fabricRef.current?.viewportTransform?.[4] || 0;
+              const panY = fabricRef.current?.viewportTransform?.[5] || 0;
+              const toScreen = (nx: number, ny: number) => ({
+                x: (imageBounds.left + nx * imageBounds.width) * zoom + panX,
+                y: (imageBounds.top + ny * imageBounds.height) * zoom + panY,
+              });
+              const center = toScreen(warpPreview.anchor.x, warpPreview.anchor.y);
+              const screenRadius = (warpRadius ?? 0) * imageBounds.width * zoom;
+
+              return (
+                <g>
+                  <circle
+                    cx={center.x}
+                    cy={center.y}
+                    r={screenRadius}
+                    fill="none"
+                    stroke="#38bdf8"
+                    strokeWidth={1}
+                    strokeDasharray="4 4"
+                    opacity={0.5}
+                  />
+                  {warpPreview.reached.map((point, index) => {
+                    const screen = toScreen(point.x, point.y);
+                    return (
+                      <circle
+                        key={index}
+                        cx={screen.x}
+                        cy={screen.y}
+                        r={2.5}
+                        fill="#38bdf8"
+                        opacity={0.25 + point.weight * 0.65}
+                      />
+                    );
+                  })}
+                  <circle cx={center.x} cy={center.y} r={4} fill="#0ea5e9" />
+                </g>
+              );
+            })()}
           </svg>
         )}
 
