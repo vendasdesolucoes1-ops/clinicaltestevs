@@ -46,9 +46,21 @@ serve(async (req) => {
         }
       };
     } else if (imageUrl) {
+      // Fetch the image ourselves: the AI gateway cannot always reach remote URLs
+      // (signed storage links, hotlink-protected hosts), which returns a 400.
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) {
+        throw new Error(`Não foi possível baixar a imagem (${imgRes.status})`);
+      }
+      const bytes = new Uint8Array(await imgRes.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      }
+      const mime = imgRes.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
       imageContent = {
         type: "image_url",
-        image_url: { url: imageUrl }
+        image_url: { url: `data:${mime};base64,${btoa(binary)}` }
       };
     } else {
       throw new Error('Either imageBase64 or imageUrl is required');
