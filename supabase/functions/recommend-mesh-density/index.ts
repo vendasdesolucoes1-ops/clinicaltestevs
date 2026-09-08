@@ -30,9 +30,9 @@ serve(async (req) => {
   try {
     const { imageBase64, imageUrl, caseType, photoAngle, notes } = await req.json();
     
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIApiKey) {
-      throw new Error('OPENAI_API_KEY not configured');
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!lovableApiKey) {
+      throw new Error('LOVABLE_API_KEY not configured');
     }
 
     // Prepare the image content
@@ -46,9 +46,21 @@ serve(async (req) => {
         }
       };
     } else if (imageUrl) {
+      // Fetch the image ourselves: the AI gateway cannot always reach remote URLs
+      // (signed storage links, hotlink-protected hosts), which returns a 400.
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) {
+        throw new Error(`Não foi possível baixar a imagem (${imgRes.status})`);
+      }
+      const bytes = new Uint8Array(await imgRes.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      }
+      const mime = imgRes.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
       imageContent = {
         type: "image_url",
-        image_url: { url: imageUrl }
+        image_url: { url: `data:${mime};base64,${btoa(binary)}` }
       };
     } else {
       throw new Error('Either imageBase64 or imageUrl is required');
@@ -105,16 +117,16 @@ Contexto do caso:
 
 Forneça sua recomendação no formato JSON especificado.`;
 
-    console.log('Calling OpenAI GPT-4 Vision for mesh recommendation...');
+    console.log('Calling Lovable AI Gateway for mesh recommendation...');
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
+        'Authorization': `Bearer ${lovableApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'google/gemini-3.7-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { 
@@ -125,22 +137,20 @@ Forneça sua recomendação no formato JSON especificado.`;
             ]
           }
         ],
-        max_tokens: 500,
-        temperature: 0.3,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI API error:', response.status, errorText);
-      throw new Error(`OpenAI API error: ${response.status}`);
+      console.error('AI Gateway error:', response.status, errorText);
+      throw new Error(`AI Gateway error: ${response.status}`);
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error('No response from OpenAI');
+      throw new Error('No response from AI Gateway');
     }
 
     console.log('OpenAI response:', content);
@@ -203,7 +213,7 @@ Forneça sua recomendação no formato JSON especificado.`;
         }
       }),
       { 
-        status: 500, 
+        status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
