@@ -63,6 +63,12 @@ interface WebhookPayload {
 }
 
 // Normalize status to database enum
+//
+// C-1: PARIDADE OBRIGATÓRIA com `normalizeJobStatus` em
+// `src/hooks/useN8nFacialAnalysis.ts`. As duas listas não podem ser um módulo
+// compartilhado — esta função roda em Deno e não importa de `src/`. Ao alterar as
+// variantes aceitas aqui, altere lá também: um status reconhecido só de um lado
+// trava o job em "Processando", já que o default abaixo é 'processing'.
 function normalizeStatus(status: string): 'pending' | 'processing' | 'success' | 'failed' {
   const statusMap: Record<string, 'pending' | 'processing' | 'success' | 'failed'> = {
     'success': 'success',

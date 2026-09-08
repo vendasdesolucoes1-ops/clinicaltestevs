@@ -25,6 +25,7 @@ import {
   Triangle,
   Brain,
   Loader2,
+  ScanFace,
   FileText,
   Target,
   Crosshair,
@@ -134,6 +135,10 @@ interface ToolPanelProps {
   // AI Mesh recommendation
   onTriggerMeshAI?: () => void;
   isMeshAILoading?: boolean;
+
+  // AI-1: análise direta pela edge function `analyze-face` (Gemini), independente do
+  // fluxo n8n disparado na criação do caso.
+  onAnalyzeDirect?: () => void;
   
   // Active points counter
   activePointsCount?: number;
@@ -258,6 +263,7 @@ export function ToolPanel({
   caseName,
   currentPhotoAngle,
   onTriggerMeshAI,
+  onAnalyzeDirect,
   isMeshAILoading,
   activePointsCount,
   // 3D Model generation (Meshy AI)
@@ -521,6 +527,38 @@ export function ToolPanel({
                       <TooltipContent side="left" className="max-w-[200px]">
                         <p className="text-xs">
                           Usa GPT-4 Vision para analisar a imagem e recomendar a densidade ideal de mesh.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
+
+                {/* AI-1: Análise direta (Gemini), independente do fluxo n8n */}
+                {onAnalyzeDirect && (
+                  <div className="pt-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full h-8 gap-1.5"
+                          onClick={onAnalyzeDirect}
+                          disabled={isAnalyzingFace}
+                        >
+                          {isAnalyzingFace ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <ScanFace className="h-3.5 w-3.5" />
+                          )}
+                          <span className="text-xs">Analisar (direto)</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="max-w-[220px]">
+                        <p className="text-xs">
+                          Caminho independente: analisa a foto atual direto pelo Gemini
+                          (edge function <span className="font-mono">analyze-face</span>),
+                          sem passar pelo fluxo n8n disparado na criação do caso.
+                          Pontos em laranja indicam baixa confiança do detector.
                         </p>
                       </TooltipContent>
                     </Tooltip>

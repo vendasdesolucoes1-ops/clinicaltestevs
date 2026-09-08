@@ -55,6 +55,12 @@ interface UseN8nFacialAnalysisReturn {
 }
 
 // Normalize job status coming from n8n (tolerates misspellings like "sucess")
+//
+// C-1: PARIDADE OBRIGATÓRIA com `normalizeStatus` em
+// `supabase/functions/webhook-n8n-notification/index.ts`. As duas listas não podem ser
+// um módulo compartilhado — este arquivo roda no browser (Vite) e a edge function roda
+// em Deno, que não importa de `src/`. Ao alterar as variantes aceitas aqui, altere lá
+// também: se um status for reconhecido só de um lado, o job trava em "Processando".
 const SUCCESS_STATUSES = ['success', 'sucess', 'succes', 'sucesso', 'ok', 'done', 'completed', 'complete', 'concluido', 'pronto'];
 const FAILED_STATUSES = ['failed', 'fail', 'falhou', 'error', 'erro'];
 

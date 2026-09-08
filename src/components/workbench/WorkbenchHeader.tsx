@@ -7,9 +7,11 @@ import {
   Layers,
   Box,
   GitCompare,
-  Keyboard
+  Keyboard,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
@@ -31,6 +33,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { EXPERIMENTAL_USE_NOTICE } from '@/lib/config';
 import type { ClinicalCase, CaseVersion, CasePhoto } from '@/lib/mockData';
 
 type ViewMode = '2d' | '3d' | 'compare';
@@ -40,7 +43,9 @@ interface WorkbenchHeaderProps {
   selectedVersion: CaseVersion | null;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  currentImageUrl: string;
+  // O seletor identifica a foto pelo id: a URL de exibição é uma signed URL efêmera
+  // (bucket privado), então não serve como chave estável.
+  currentPhotoId?: string;
   onPhotoSelect: (url: string, photo: CasePhoto) => void;
   analyzedPhotoIds: Set<string>;
   canCompare: boolean;
@@ -60,7 +65,7 @@ export function WorkbenchHeader({
   selectedVersion,
   viewMode,
   onViewModeChange,
-  currentImageUrl,
+  currentPhotoId,
   onPhotoSelect,
   analyzedPhotoIds,
   canCompare,
@@ -100,10 +105,10 @@ export function WorkbenchHeader({
             <TooltipTrigger asChild>
               <div>
                 <Select
-                  value={currentImageUrl}
-                  onValueChange={(url) => {
-                    const photo = caseData.photos.find(p => p.url === url);
-                    if (photo) onPhotoSelect(url, photo);
+                  value={currentPhotoId ?? ''}
+                  onValueChange={(photoId) => {
+                    const photo = caseData.photos.find(p => p.id === photoId);
+                    if (photo) onPhotoSelect(photo.url, photo);
                   }}
                 >
                   <SelectTrigger className="w-[180px] h-8 text-xs">
@@ -112,7 +117,7 @@ export function WorkbenchHeader({
                   </SelectTrigger>
                   <SelectContent className="z-50 bg-popover">
                     {caseData.photos.map((photo) => (
-                      <SelectItem key={photo.id} value={photo.url} className="text-xs">
+                      <SelectItem key={photo.id} value={photo.id} className="text-xs">
                         <span className="flex items-center gap-2">
                           {photo.angle === 'frente' ? 'Frente' :
                            photo.angle === 'perfil_d' ? 'Perfil Direito' :
@@ -175,6 +180,26 @@ export function WorkbenchHeader({
             </Tooltip>
           </TabsList>
         </Tabs>
+
+        {/* PR-1: aviso permanente de uso experimental (sistema não registrado como SaMD) */}
+        <Tooltip>
+          {/* Badge não encaminha ref: o span existe para o asChild do Tooltip ancorar,
+              mesmo padrão já usado no seletor de fotos acima. */}
+          <TooltipTrigger asChild>
+            <span>
+              <Badge
+                variant="outline"
+                className="h-8 gap-1.5 px-2 text-xs font-normal border-warning/40 text-warning cursor-help"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Experimental
+              </Badge>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            {EXPERIMENTAL_USE_NOTICE}
+          </TooltipContent>
+        </Tooltip>
 
         {/* Help Dialog */}
         <Dialog>

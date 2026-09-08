@@ -84,13 +84,23 @@ REQUIRED POINTS BY REGION (minimum 60-80 total points):
 - cheek_left_1, cheek_left_2
 - cheek_right_1, cheek_right_2
 
+CONFIDENCE SCORE (required per point):
+Each point MUST include a "confidence" value between 0 and 1 reflecting how certain you are
+about that specific landmark's position in THIS image:
+- 1.0 - 0.8: landmark is clearly visible, sharp and unambiguous
+- 0.8 - 0.6: visible but slightly blurred, low contrast or partially angled
+- below 0.6: obstructed (hair, dressing, bandage), in shadow, out of frame, or inferred
+  from surrounding anatomy rather than directly observed
+Be honest: a low score flags the point for manual review by the surgeon, which is safer
+than an overconfident guess on a clinical measurement.
+
 RESPONSE FORMAT - Return ONLY valid JSON (no markdown, no explanation):
 {
   "faceROI": {"x": 0.15, "y": 0.05, "width": 0.7, "height": 0.9},
   "midlinePoints": ["trichion", "metopion", "glabella", "nasion", "rhinion", "pronasale", "subnasale", "labiale_superius", "stomion", "labiale_inferius", "pogonion", "gnathion", "menton"],
   "points": [
-    {"id": "glabella", "name": "Glabela", "x": 0.5, "y": 0.25, "region": "midline", "adjacentRegions": ["forehead", "eyebrow_left", "eyebrow_right"]},
-    {"id": "pupil_left", "name": "Pupila Esquerda", "x": 0.38, "y": 0.35, "region": "eye_left", "adjacentRegions": ["eyebrow_left", "nose_upper", "cheek_left"]}
+    {"id": "glabella", "name": "Glabela", "x": 0.5, "y": 0.25, "region": "midline", "adjacentRegions": ["forehead", "eyebrow_left", "eyebrow_right"], "confidence": 0.92},
+    {"id": "pupil_left", "name": "Pupila Esquerda", "x": 0.38, "y": 0.35, "region": "eye_left", "adjacentRegions": ["eyebrow_left", "nose_upper", "cheek_left"], "confidence": 0.97}
   ]
 }
 
@@ -104,6 +114,7 @@ CRITICAL RULES:
 7. Right points should have x > 0.5
 8. Include ALL points listed above - at least 60-80 points total
 9. Be precise with coordinates based on actual facial features in the image
+10. Every point MUST have a "confidence" value (0-1) as described above
 
 Generate the complete JSON with ALL the landmark points now.`;
 
@@ -245,8 +256,27 @@ serve(async (req) => {
       return inROI;
     });
 
-    const pointCount = validatedPoints.length;
+    // AI-1: normaliza o escore de confiança. Ausente ou inválido vira `undefined` —
+    // ausência de escore não é o mesmo que confiança baixa, e não deve sinalizar
+    // revisão manual na interface.
+    const scoredPoints = validatedPoints.map((point: any) => {
+      // `null`/`''` viram 0 em Number(), o que sinalizaria confiança baixa em vez de
+      // ausência de escore — por isso o descarte explícito antes da conversão.
+      const rawValue = point.confidence;
+      const isBlank = rawValue === null || rawValue === undefined || rawValue === '';
+      const parsed = isBlank ? NaN : Number(rawValue);
+      const confidence = Number.isFinite(parsed)
+        ? Math.min(1, Math.max(0, parsed))
+        : undefined;
+      return { ...point, confidence };
+    });
+
+    const pointCount = scoredPoints.length;
+    const lowConfidenceCount = scoredPoints.filter(
+      (p: any) => typeof p.confidence === 'number' && p.confidence < 0.6,
+    ).length;
     console.log(`Análise facial concluída: ${pointCount} pontos válidos dentro da ROI`);
+    console.log(`Pontos com baixa confiança (< 0.6): ${lowConfidenceCount}`);
     
     if (pointCount < 10) {
       console.warn('AVISO: Poucos pontos detectados! A IA pode não ter retornado todos os landmarks.');
@@ -256,7 +286,7 @@ serve(async (req) => {
       JSON.stringify({
         faceROI,
         midlinePoints,
-        points: validatedPoints,
+        points: scoredPoints,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -41,6 +41,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { N8N_WEBHOOK_URL } from '@/lib/config';
+import { resolveSignedUrls } from '@/lib/storageUrls';
 
 type PhotoAngle = Database['public']['Enums']['photo_angle'];
 type CaseType = Database['public']['Enums']['case_type'];
@@ -124,7 +125,7 @@ export default function CaseForm() {
         // Load existing photos
         const { data: photosData } = await supabase
           .from('case_photos')
-          .select('angle, url')
+          .select('angle, url, storage_path')
           .eq('case_id', id);
 
         if (photosData && photosData.length > 0) {
@@ -134,8 +135,16 @@ export default function CaseForm() {
             perfil_e: null,
             tres_quartos: null,
           };
+
+          // Bucket privado: a exibição depende de signed URL derivada do storage_path.
+          const signedUrls = await resolveSignedUrls(
+            'case-photos',
+            photosData.map(p => p.storage_path),
+          );
+
           photosData.forEach(photo => {
-            photoMap[photo.angle] = photo.url;
+            photoMap[photo.angle] =
+              (photo.storage_path && signedUrls.get(photo.storage_path)) || photo.url;
           });
           setExistingPhotos(photoMap);
         }
@@ -168,24 +177,33 @@ export default function CaseForm() {
     }));
   };
 
-  const uploadPhotoToStorage = async (caseId: string, angle: PhotoAngle, file: File): Promise<string | null> => {
+  // Devolve o caminho REAL do objeto junto com a URL, para que `storage_path` no banco
+  // corresponda exatamente ao arquivo enviado (antes o caminho era recalculado no insert,
+  // com outro Date.now() e sem extensão, e nunca batia com o objeto no storage).
+  const uploadPhotoToStorage = async (
+    caseId: string,
+    angle: PhotoAngle,
+    file: File,
+  ): Promise<{ path: string; url: string } | null> => {
     const fileExt = file.name.split('.').pop();
     const fileName = `${caseId}/${angle}_${Date.now()}.${fileExt}`;
-    
+
     const { error: uploadError } = await supabase.storage
       .from('case-photos')
       .upload(fileName, file, { upsert: true });
-    
+
     if (uploadError) {
       console.error('Upload error:', uploadError);
       return null;
     }
-    
+
+    // O bucket é privado: esta URL não resolve sozinha, mas segue sendo a referência
+    // canônica do objeto gravada em `case_photos.url`. A exibição usa signed URL.
     const { data: { publicUrl } } = supabase.storage
       .from('case-photos')
       .getPublicUrl(fileName);
-    
-    return publicUrl;
+
+    return { path: fileName, url: publicUrl };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -269,25 +287,25 @@ export default function CaseForm() {
       for (const [angle, file] of photosToUpload) {
         if (!file) continue;
         
-        const publicUrl = await uploadPhotoToStorage(caseId, angle as PhotoAngle, file);
-        
-        if (publicUrl) {
+        const uploaded = await uploadPhotoToStorage(caseId, angle as PhotoAngle, file);
+
+        if (uploaded) {
           const { data: insertedPhoto } = await supabase
             .from('case_photos')
             .insert({
               case_id: caseId,
               angle: angle as PhotoAngle,
-              url: publicUrl,
-              storage_path: `${caseId}/${angle}_${Date.now()}`,
+              url: uploaded.url,
+              storage_path: uploaded.path,
             })
             .select('id')
             .single();
-          
+
           if (insertedPhoto) {
-            uploadedPhotosData.push({ 
-              photo_id: insertedPhoto.id, 
-              angle: angle as PhotoAngle, 
-              url: publicUrl 
+            uploadedPhotosData.push({
+              photo_id: insertedPhoto.id,
+              angle: angle as PhotoAngle,
+              url: uploaded.url
             });
         }
       }

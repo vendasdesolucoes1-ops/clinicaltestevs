@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
+import { resolveSignedUrl, resolveSignedUrls } from '@/lib/storageUrls';
 
 interface Case3DScan {
   id: string;
@@ -78,10 +79,24 @@ export function useCase3DScans(caseId: string | undefined) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
+
       // Type assertion since the table is new and not in generated types yet
-      const typedData = data as unknown as Case3DScan[];
-      setScans(typedData || []);
+      const rawScans = (data as unknown as Case3DScan[]) || [];
+
+      // Bucket privado (S-1): o viewer 3D carrega o modelo pela URL, então ela precisa
+      // ser assinada. Scans sem storage_path (ex.: modelo hospedado fora do bucket)
+      // mantêm a file_url original.
+      const signedUrls = await resolveSignedUrls(
+        'case-3d-models',
+        rawScans.map(s => s.storage_path),
+      );
+
+      const typedData = rawScans.map(scan => ({
+        ...scan,
+        file_url: (scan.storage_path && signedUrls.get(scan.storage_path)) || scan.file_url,
+      }));
+
+      setScans(typedData);
       
       // Set the most recent scan as active by default
       if (typedData && typedData.length > 0 && !activeScan) {
@@ -176,7 +191,8 @@ export function useCase3DScans(caseId: string | undefined) {
 
       setUploadProgress(60);
 
-      // Get public URL
+      // Bucket privado: `file_url` guarda a referência canônica em formato público,
+      // e a exibição usa signed URL (resolvida abaixo e no fetchScans).
       const { data: { publicUrl } } = supabase.storage
         .from('case-3d-models')
         .getPublicUrl(storagePath);
@@ -209,7 +225,11 @@ export function useCase3DScans(caseId: string | undefined) {
 
       setUploadProgress(100);
 
-      const typedScan = scanRecord as unknown as Case3DScan;
+      const savedScan = scanRecord as unknown as Case3DScan;
+      const typedScan: Case3DScan = {
+        ...savedScan,
+        file_url: (await resolveSignedUrl('case-3d-models', storagePath)) ?? savedScan.file_url,
+      };
       setScans(prev => [typedScan, ...prev]);
       setActiveScan(typedScan);
       
