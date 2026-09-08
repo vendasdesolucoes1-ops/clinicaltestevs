@@ -280,6 +280,14 @@ Continue developing this project in the [Lovable editor](https://lovable.dev/pro
 - **Stay in sync**: every change made in Lovable is committed straight to this repository.
 - **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
+## Acesso e contas
+
+O cadastro aberto foi removido (S-2): esta é uma ferramenta clínica de uso restrito a
+profissionais autorizados. Novas contas devem ser criadas manualmente no painel do
+Supabase (**Authentication → Users**) até existir um fluxo formal de convite/aprovação.
+
+A tela de login não oferece mais criação de conta — apenas autenticação por e-mail e senha.
+
 ## Development
 
 Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
