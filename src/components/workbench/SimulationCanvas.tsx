@@ -43,6 +43,8 @@ interface SimulationCanvasProps {
   // PR-4 nível 1: deformação geométrica da face
   warpDisplacements?: DisplacementMap;
   onWarpPull?: (pointIndex: number, dx: number, dy: number) => void;
+  /** Maior deslocamento da manobra em mm, ou null se a foto não está calibrada. */
+  onWarpMeasureChange?: (millimeters: number | null) => void;
 }
 
 export interface SimulationCanvasRef {
@@ -191,7 +193,7 @@ const createWarpArrow = (
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull, onWarpMeasureChange }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -455,6 +457,33 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       background.setElement(warpCanvasRef.current);
       canvas.renderAll();
     }, [warpDisplacements, mediaPipeMeshData, isReady]);
+
+    // PR-4: traduz o deslocamento para milímetros usando a calibração da foto.
+    // Sem calibração devolve null — a interface então mostra a manobra em porcentagem,
+    // porque afirmar milímetro sobre foto sem escala seria pior do que não medir.
+    useEffect(() => {
+      if (!onWarpMeasureChange) return;
+
+      if (!warpDisplacements || warpDisplacements.size === 0) {
+        onWarpMeasureChange(null);
+        return;
+      }
+
+      let largestNormalized = 0;
+      warpDisplacements.forEach(({ dx, dy }) => {
+        largestNormalized = Math.max(largestNormalized, Math.hypot(dx, dy));
+      });
+
+      if (!isCalibrated || !pixelsPerMm || !imageBounds.width) {
+        onWarpMeasureChange(null);
+        return;
+      }
+
+      // O deslocamento é normalizado à imagem; a calibração vive em pixels do canvas,
+      // que é onde os cliques de calibração foram dados.
+      const canvasPixels = largestNormalized * imageBounds.width;
+      onWarpMeasureChange(canvasPixels / pixelsPerMm);
+    }, [warpDisplacements, isCalibrated, pixelsPerMm, imageBounds.width, onWarpMeasureChange]);
 
     useEffect(() => {
       const canvas = fabricRef.current;
