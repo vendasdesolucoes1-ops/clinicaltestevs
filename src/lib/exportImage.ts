@@ -93,9 +93,10 @@ function drawFooter(
   width: number,
   imageHeight: number,
   footerHeight: number,
+  baseFontSize: number,
   variants: string[],
 ): void {
-  const padding = Math.round(footerHeight * 0.28);
+  const padding = Math.round(baseFontSize * 1.1);
 
   ctx.save();
   ctx.fillStyle = '#0f172a';
@@ -123,8 +124,8 @@ function drawFooter(
     return { left, right: ctx.measureText(text).width };
   };
 
-  let fontSize = Math.round(footerHeight * 0.34);
-  const minimum = Math.round(footerHeight * 0.2);
+  let fontSize = baseFontSize;
+  const minimum = 11;
   const fullest = variants[0] ?? '';
   for (;;) {
     const { left, right } = widths(fontSize, fullest);
@@ -163,9 +164,13 @@ export function renderExport({
   const width = image instanceof HTMLImageElement ? image.naturalWidth : image.width;
   const height = image instanceof HTMLImageElement ? image.naturalHeight : image.height;
 
-  // A faixa acompanha a imagem, mas nunca fica pequena demais para ser lida numa tela de
-  // celular — que é onde a maior parte dessas imagens é vista.
-  const footerHeight = Math.max(56, Math.round(height * 0.07));
+  // Quem limita o texto é a LARGURA, não a altura. Dimensionar a faixa pela altura fazia
+  // a tipografia crescer em foto retrato até o aviso ocupar a linha inteira, e a
+  // identificação era descartada por falta de espaço — numa foto de celular sobrava só o
+  // nome do caso, sem data nem versão. Agora a fonte sai da largura e a faixa segue a
+  // fonte; o piso mantém a legibilidade em recorte pequeno.
+  const fontSize = Math.max(13, Math.round(width * 0.026));
+  const footerHeight = Math.max(48, Math.round(fontSize * 2.6));
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -177,7 +182,14 @@ export function renderExport({
   ctx.drawImage(image, 0, 0, width, height);
   drawWatermark(ctx, width, height);
 
-  drawFooter(ctx, width, height, footerHeight, identificationVariants(caseName, versionName, date));
+  drawFooter(
+    ctx,
+    width,
+    height,
+    footerHeight,
+    fontSize,
+    identificationVariants(caseName, versionName, date),
+  );
 
   return canvas.toDataURL('image/png');
 }
