@@ -21,8 +21,27 @@ export interface VersionWarpState {
   anchorRegions: AnchorRegion[];
 }
 
+/**
+ * Quadro de referência em que as marcações foram desenhadas.
+ *
+ * O canvas do Fabric tem o tamanho do CONTÊINER, então a mesma coordenada cai em pontos
+ * diferentes do rosto conforme o tamanho da janela. Guardar a coordenada crua faria as
+ * marcações reaparecerem fora de lugar numa tela de outro tamanho — pior que perdê-las,
+ * porque parece certo e não é. Com o quadro salvo, a leitura reposiciona pela razão entre
+ * ele e o quadro atual.
+ */
+export interface VersionFrame {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 export interface VersionState {
   warp: VersionWarpState | null;
+  /** Objetos de anotação, como o Fabric os serializa. */
+  markings: unknown[];
+  frame: VersionFrame | null;
 }
 
 const ANCHOR_REGIONS: AnchorRegion[] = ['face_oval', 'eyes', 'eyebrows', 'lips'];
@@ -38,11 +57,20 @@ interface SerializedState {
     intensity: number;
     anchorRegions: AnchorRegion[];
   };
+  /**
+   * Campo acrescentado depois, mantendo `schema: 1` de propósito: acrescentar campo
+   * opcional é mudança compatível. Subir o schema invalidaria as versões já gravadas —
+   * o leitor abaixo descarta schema desconhecido —, e elas perderiam a deformação.
+   */
+  markings?: unknown[];
+  frame?: VersionFrame;
 }
 
 export function serializeVersionState(state: VersionState): SerializedState {
   return {
     schema: VERSION_STATE_SCHEMA,
+    markings: state.markings.length > 0 ? state.markings : undefined,
+    frame: state.markings.length > 0 && state.frame ? state.frame : undefined,
     warp: state.warp
       ? {
           displacements: [...state.warp.displacements.entries()].map(
@@ -77,45 +105,66 @@ function parseDisplacements(raw: unknown): DisplacementMap {
   return map;
 }
 
+function parseFrame(raw: unknown): VersionFrame | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { left, top, width, height } = raw as Record<string, unknown>;
+  if (!isFiniteNumber(left) || !isFiniteNumber(top)) return null;
+  // Largura ou altura zero tornaria a razão de reposicionamento indefinida.
+  if (!isFiniteNumber(width) || !isFiniteNumber(height) || width <= 0 || height <= 0) return null;
+  return { left, top, width, height };
+}
+
+function parseWarp(raw: SerializedState['warp']): VersionWarpState | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const displacements = parseDisplacements(raw.displacements);
+  if (displacements.size === 0) return null;
+
+  const anchorRegions = Array.isArray(raw.anchorRegions)
+    ? raw.anchorRegions.filter((region): region is AnchorRegion => ANCHOR_REGIONS.includes(region))
+    : [];
+
+  return {
+    displacements,
+    radius: isFiniteNumber(raw.radius) && raw.radius > 0 ? raw.radius : 0.08,
+    intensity: isFiniteNumber(raw.intensity) && raw.intensity > 0 ? raw.intensity : 100,
+    anchorRegions,
+  };
+}
+
 /** Lê o `canvas_state` gravado. Nunca lança: o que não for reconhecido é descartado. */
 export function parseVersionState(raw: unknown): VersionState {
-  const empty: VersionState = { warp: null };
+  const empty: VersionState = { warp: null, markings: [], frame: null };
   if (!raw || typeof raw !== 'object') return empty;
 
   const state = raw as Partial<SerializedState>;
   // Um schema mais novo pode ter significados diferentes para os mesmos campos; abrir o
-  // caso sem a deformação é melhor que reconstruí-la errado.
+  // caso sem o conteúdo é melhor que reconstruí-lo errado.
   if (state.schema !== VERSION_STATE_SCHEMA) return empty;
 
-  const warp = state.warp;
-  if (!warp || typeof warp !== 'object') return empty;
-
-  const displacements = parseDisplacements(warp.displacements);
-  if (displacements.size === 0) return empty;
-
-  const anchorRegions = Array.isArray(warp.anchorRegions)
-    ? warp.anchorRegions.filter((region): region is AnchorRegion => ANCHOR_REGIONS.includes(region))
+  const frame = parseFrame(state.frame);
+  // Sem o quadro de referência não há como reposicionar: desenhar as marcações em
+  // coordenadas de outra tela as colocaria sobre a parte errada do rosto.
+  const markings = frame && Array.isArray(state.markings)
+    ? state.markings.filter(entry => !!entry && typeof entry === 'object')
     : [];
 
-  return {
-    warp: {
-      displacements,
-      radius: isFiniteNumber(warp.radius) && warp.radius > 0 ? warp.radius : 0.08,
-      intensity: isFiniteNumber(warp.intensity) && warp.intensity > 0 ? warp.intensity : 100,
-      anchorRegions,
-    },
-  };
+  return { warp: parseWarp(state.warp), markings, frame: markings.length > 0 ? frame : null };
 }
 
 /**
- * Dois estados descrevem a mesma coisa?
+ * As duas deformações descrevem a mesma coisa?
  *
  * Usado para saber se há trabalho não salvo, o que é verificado a cada quadro do arraste.
  * Serializar para comparar custaria dezenas de kilobytes de string por quadro; aqui a
  * comparação é numérica e não aloca. Precisa ser exata: um falso "sem alterações" faria a
  * troca de versão descartar a deformação sem perguntar.
+ *
+ * As marcações ficam de fora por o mesmo motivo de custo — serializá-las por quadro seria
+ * ainda mais caro. Alteração nelas é detectada pelos eventos do canvas, que é informação
+ * que o Fabric já emite.
  */
-export function versionStatesEqual(a: VersionState, b: VersionState): boolean {
+export function warpStatesEqual(a: VersionState, b: VersionState): boolean {
   if (!a.warp || !b.warp) return !a.warp && !b.warp;
 
   if (
