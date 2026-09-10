@@ -311,13 +311,32 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       fabricRef.current = canvas;
       setIsReady(true);
 
-      const recount = () => {
-        setAnnotationCount(canvas.getObjects().filter(isAnnotationObject).length);
+      // A malha detectada cria um objeto por ponto e um por conexão — cerca de 3000 de
+      // uma vez. Varrer o canvas inteiro a cada objeto adicionado é quadrático: medido em
+      // navegador, dobrava o tempo de desenhar a malha e disparava o handler 3034 vezes,
+      // marcando a versão como "não salva" só por ter desenhado a malha. O objeto que não
+      // é anotação não interessa aqui, e a contagem anda de um em um.
+      const handleObjectAdded = ({ target }: { target?: fabric.FabricObject }) => {
+        if (!target || !isAnnotationObject(target)) return;
+        setAnnotationCount(current => current + 1);
         if (!suppressAnnotationEventsRef.current) onAnnotationsChangedRef.current?.();
       };
-      canvas.on('object:added', recount);
-      canvas.on('object:removed', recount);
-      canvas.on('object:modified', recount);
+
+      const handleObjectRemoved = ({ target }: { target?: fabric.FabricObject }) => {
+        if (!target || !isAnnotationObject(target)) return;
+        setAnnotationCount(current => Math.max(0, current - 1));
+        if (!suppressAnnotationEventsRef.current) onAnnotationsChangedRef.current?.();
+      };
+
+      // Mover ou redimensionar não muda a quantidade, mas muda o que seria gravado.
+      const handleObjectModified = ({ target }: { target?: fabric.FabricObject }) => {
+        if (!target || !isAnnotationObject(target)) return;
+        if (!suppressAnnotationEventsRef.current) onAnnotationsChangedRef.current?.();
+      };
+
+      canvas.on('object:added', handleObjectAdded);
+      canvas.on('object:removed', handleObjectRemoved);
+      canvas.on('object:modified', handleObjectModified);
 
       const handleResize = () => {
         canvas.setDimensions({
@@ -331,9 +350,9 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       
       return () => {
         window.removeEventListener('resize', handleResize);
-        canvas.off('object:added', recount);
-        canvas.off('object:removed', recount);
-        canvas.off('object:modified', recount);
+        canvas.off('object:added', handleObjectAdded);
+        canvas.off('object:removed', handleObjectRemoved);
+        canvas.off('object:modified', handleObjectModified);
         canvas.dispose();
         fabricRef.current = null;
       };
