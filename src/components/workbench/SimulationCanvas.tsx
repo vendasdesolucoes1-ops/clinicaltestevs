@@ -6,6 +6,8 @@ import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasStatusBar } from './CanvasStatusBar';
 import { CanvasRuler } from './CanvasRuler';
 import { geodesicDistancesFrom } from '@/lib/faceGeodesic';
+import type { VersionFrame } from '@/lib/versionState';
+import { isAnnotationObject, repositionForFrame } from '@/lib/canvasAnnotations';
 import { CalibrationOverlay } from './CalibrationOverlay';
 import { FacialMesh } from './FacialMesh';
 import { MediaPipeMeshRenderer } from './MediaPipeMeshRenderer';
@@ -46,6 +48,8 @@ interface SimulationCanvasProps {
   onWarpPull?: (pointIndex: number, dx: number, dy: number) => void;
   /** Fim do arraste: fecha o passo do histórico. */
   onWarpPullEnd?: () => void;
+  /** Alguma marcação foi criada, movida ou removida. */
+  onAnnotationsChanged?: () => void;
   /** Raio de influência, para desenhar a prévia sob o cursor. */
   warpRadius?: number;
   /** Maior deslocamento da manobra em mm, ou null se a foto não está calibrada. */
@@ -57,6 +61,10 @@ export interface SimulationCanvasRef {
   redo: () => void;
   clear: () => void;
   exportImage: () => string | null;
+  /** Marcações do usuário, como o Fabric as serializa, e o quadro em que foram feitas. */
+  exportMarkings: () => { markings: unknown[]; frame: VersionFrame | null };
+  /** Substitui as marcações atuais pelas gravadas, reposicionadas para o quadro atual. */
+  loadMarkings: (markings: unknown[], frame: VersionFrame | null) => Promise<void>;
   getCanvasState: () => any;
   getCanvas: () => fabric.Canvas | null;
   getCanvasDataUrl: () => string | null;
@@ -198,7 +206,7 @@ const createWarpArrow = (
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull, onWarpPullEnd, warpRadius, onWarpMeasureChange }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull, onWarpPullEnd, onAnnotationsChanged, warpRadius, onWarpMeasureChange }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -219,11 +227,21 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     // tinha efeito até trocar de ferramenta e voltar. A ref sempre aponta para a atual.
     const onWarpPullRef = useRef(onWarpPull);
     const onWarpPullEndRef = useRef(onWarpPullEnd);
+    const onAnnotationsChangedRef = useRef(onAnnotationsChanged);
+    // Restaurar uma versão adiciona e remove objetos, mas isso não é edição do usuário: sem
+    // silenciar, a versão nasceria marcada como "não salva" no instante em que foi aberta.
+    const suppressAnnotationEventsRef = useRef(false);
     useEffect(() => {
       onWarpPullRef.current = onWarpPull;
       onWarpPullEndRef.current = onWarpPullEnd;
+      onAnnotationsChangedRef.current = onAnnotationsChanged;
     });
     const [isMouseOverCanvas, setIsMouseOverCanvas] = useState(false);
+    // Contado a partir do canvas, não do store: a borracha remove o objeto do Fabric e
+    // nunca chamava `removeObject`, então o número só crescia. E restaurar uma versão
+    // acrescenta objetos sem passar pelo store, o que deixaria o contador em zero com
+    // marcações na tela.
+    const [annotationCount, setAnnotationCount] = useState(0);
     
     // For warp tool - track drag start/end
     const warpStartRef = useRef<Point | null>(null);
@@ -293,6 +311,14 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       fabricRef.current = canvas;
       setIsReady(true);
 
+      const recount = () => {
+        setAnnotationCount(canvas.getObjects().filter(isAnnotationObject).length);
+        if (!suppressAnnotationEventsRef.current) onAnnotationsChangedRef.current?.();
+      };
+      canvas.on('object:added', recount);
+      canvas.on('object:removed', recount);
+      canvas.on('object:modified', recount);
+
       const handleResize = () => {
         canvas.setDimensions({
           width: container.clientWidth,
@@ -305,6 +331,9 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       
       return () => {
         window.removeEventListener('resize', handleResize);
+        canvas.off('object:added', recount);
+        canvas.off('object:removed', recount);
+        canvas.off('object:modified', recount);
         canvas.dispose();
         fabricRef.current = null;
       };
@@ -1128,11 +1157,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         const canvas = fabricRef.current;
         if (!canvas) return;
         
-        const objs = canvas.getObjects().filter((obj: any) => 
-          !obj.customName?.startsWith('grid_') && 
-          !obj.customName?.startsWith('mesh_') && 
-          obj.customName !== 'backgroundImage'
-        );
+        const objs = canvas.getObjects().filter(isAnnotationObject);
         if (objs.length > 0) {
           canvas.remove(objs[objs.length - 1]);
           canvas.renderAll();
@@ -1144,15 +1169,49 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         stateRedo();
         toast.info('Ação refeita');
       },
+      exportMarkings: () => {
+        const canvas = fabricRef.current;
+        if (!canvas || !imageBounds.width) return { markings: [], frame: null };
+
+        return {
+          // `customName` não é propriedade padrão do Fabric: sem pedir explicitamente ela
+          // não entra na serialização, e sem ela o objeto restaurado deixaria de ser
+          // reconhecido como anotação na próxima gravação.
+          markings: canvas.getObjects().filter(isAnnotationObject).map(obj => obj.toObject(['customName'])),
+          frame: { ...imageBounds },
+        };
+      },
+      loadMarkings: async (markings, frame) => {
+        const canvas = fabricRef.current;
+        if (!canvas) return;
+
+        suppressAnnotationEventsRef.current = true;
+        try {
+          canvas.getObjects().filter(isAnnotationObject).forEach(obj => canvas.remove(obj));
+
+          if (markings.length === 0 || !frame || !imageBounds.width) {
+            canvas.renderAll();
+            return;
+          }
+
+          const revived = await fabric.util.enlivenObjects<fabric.FabricObject>(markings);
+
+          // A foto pode estar exibida em outro tamanho que quando a marcação foi feita.
+          for (const object of revived) {
+            repositionForFrame(object, frame, imageBounds);
+            canvas.add(object);
+          }
+
+          canvas.renderAll();
+        } finally {
+          suppressAnnotationEventsRef.current = false;
+        }
+      },
       clear: () => {
         const canvas = fabricRef.current;
         if (!canvas) return;
         
-        const toRemove = canvas.getObjects().filter((obj: any) => 
-          !obj.customName?.startsWith('grid_') && 
-          !obj.customName?.startsWith('mesh_') && 
-          obj.customName !== 'backgroundImage'
-        );
+        const toRemove = canvas.getObjects().filter(isAnnotationObject);
         toRemove.forEach(obj => canvas.remove(obj));
         canvas.renderAll();
         clearObjects();
@@ -1859,7 +1918,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           cursorPosition={cursorPosition}
           isPanning={isPanMode}
           zoom={zoom}
-          objectCount={objects.length}
+          objectCount={annotationCount}
         />
       </div>
     );

@@ -49,7 +49,7 @@ import { renderExport } from '@/lib/exportImage';
 import {
   parseVersionState,
   serializeVersionState,
-  versionStatesEqual,
+  warpStatesEqual,
   type VersionState,
 } from '@/lib/versionState';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -888,26 +888,50 @@ export default function Workbench() {
   // versão ou recarregar a página descartava o trabalho, e comparar A com B comparava
   // dois registros vazios.
   const captureVersionState = useCallback((): VersionState => {
-    if (warpDisplacements.size === 0) return { warp: null };
+    const { markings, frame } = canvasRef.current?.exportMarkings() ?? { markings: [], frame: null };
     return {
-      warp: {
-        displacements: warpDisplacements,
-        radius: warpRadius,
-        intensity: warpIntensity,
-        anchorRegions,
-      },
+      warp:
+        warpDisplacements.size > 0
+          ? {
+              displacements: warpDisplacements,
+              radius: warpRadius,
+              intensity: warpIntensity,
+              anchorRegions,
+            }
+          : null,
+      markings,
+      frame,
     };
   }, [warpDisplacements, warpRadius, warpIntensity, anchorRegions]);
 
   // Estado que a versão aberta já contém, para saber se há trabalho não salvo.
-  const savedStateRef = useRef<VersionState>({ warp: null });
-  const hasUnsavedWork = !versionStatesEqual(captureVersionState(), savedStateRef.current);
+  const savedStateRef = useRef<VersionState>({ warp: null, markings: [], frame: null });
+
+  // A deformação é comparada; a marcação é sinalizada por evento do canvas. Serializar as
+  // marcações a cada render, só para saber se mudaram, custaria caro durante o arraste.
+  const [markingsDirty, setMarkingsDirty] = useState(false);
+  const handleAnnotationsChanged = useCallback(() => setMarkingsDirty(true), []);
+
+  const hasUnsavedWork =
+    !warpStatesEqual(
+      {
+        warp:
+          warpDisplacements.size > 0
+            ? { displacements: warpDisplacements, radius: warpRadius, intensity: warpIntensity, anchorRegions }
+            : null,
+        markings: [],
+        frame: null,
+      },
+      savedStateRef.current,
+    ) || markingsDirty;
 
   const applyVersionState = useCallback(
-    (version: CaseVersion | null) => {
+    async (version: CaseVersion | null) => {
       const state = parseVersionState(version?.canvasState);
       loadWarpState(state.warp);
+      await canvasRef.current?.loadMarkings(state.markings, state.frame);
       savedStateRef.current = state;
+      setMarkingsDirty(false);
     },
     [loadWarpState],
   );
@@ -930,6 +954,7 @@ export default function Workbench() {
         return false;
       }
       savedStateRef.current = state;
+      setMarkingsDirty(false);
       return true;
     },
     [],
@@ -1220,6 +1245,7 @@ export default function Workbench() {
                 warpDisplacements={warpDisplacements}
                 onWarpPull={handleWarpPull}
                 onWarpPullEnd={commitWarpStroke}
+                onAnnotationsChanged={handleAnnotationsChanged}
                 warpRadius={warpRadius}
                 onWarpMeasureChange={setWarpMeasureMm}
                 imageUrl={currentImageUrl}
