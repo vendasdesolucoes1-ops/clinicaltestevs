@@ -28,6 +28,8 @@ interface SurfaceCache {
   neighbors: Neighbors;
   /** Distâncias já calculadas, por ponto de origem. Um arraste reusa a mesma origem. */
   bySource: Map<number, Map<number, number>>;
+  /** O mesmo, para origens múltiplas (regiões ósseas), chaveado pelo conjunto. */
+  bySet: Map<string, Map<number, number>>;
 }
 
 // Chaveado pelo próprio array de landmarks: cada foto analisada tem o seu, e ele não muda
@@ -63,7 +65,7 @@ function buildNeighbors(landmarks: MediaPipePoint[]): Neighbors {
 function getCache(landmarks: MediaPipePoint[]): SurfaceCache {
   let cache = cacheByLandmarks.get(landmarks);
   if (!cache) {
-    cache = { neighbors: buildNeighbors(landmarks), bySource: new Map() };
+    cache = { neighbors: buildNeighbors(landmarks), bySource: new Map(), bySet: new Map() };
     cacheByLandmarks.set(landmarks, cache);
   }
   return cache;
@@ -146,5 +148,59 @@ export function geodesicDistancesFrom(
   }
 
   cache.bySource.set(sourceIndex, distances);
+  return distances;
+}
+
+/**
+ * Distâncias, medidas sobre a pele, de um CONJUNTO de pontos a todos os que ele alcança.
+ *
+ * É o mesmo Dijkstra acima com a fila semeada por todas as origens a distância zero, o
+ * que devolve, para cada ponto, a distância até a ORIGEM MAIS PRÓXIMA do conjunto — ou
+ * seja, a distância até a borda da região.
+ *
+ * É o que uma manobra óssea precisa: os pontos da região ficam todos a zero e se movem em
+ * bloco, e a atenuação só começa fora dela. Medir a partir de um ponto central, como faz
+ * a ferramenta de pele, deformaria o próprio bloco.
+ *
+ * Devolve `null` se nenhuma das origens pertence à superfície tesselada.
+ */
+export function geodesicDistancesFromSet(
+  landmarks: MediaPipePoint[],
+  sourceIndices: readonly number[],
+): Map<number, number> | null {
+  const cache = getCache(landmarks);
+
+  const sources = sourceIndices.filter(index => cache.neighbors.has(index));
+  if (sources.length === 0) return null;
+
+  // As regiões são fixas e poucas; a chave ordenada basta para reusar entre quadros.
+  const key = [...sources].sort((a, b) => a - b).join(',');
+  const known = cache.bySet.get(key);
+  if (known) return known;
+
+  const distances = new Map<number, number>();
+  const settled = new Set<number>();
+  const queue = new MinHeap();
+
+  for (const index of sources) {
+    distances.set(index, 0);
+    queue.push(index, 0);
+  }
+
+  while (queue.size > 0) {
+    const current = queue.pop();
+    if (!current || settled.has(current.index)) continue;
+    settled.add(current.index);
+
+    for (const { index, weight } of cache.neighbors.get(current.index) ?? []) {
+      const candidate = current.distance + weight;
+      if (candidate < (distances.get(index) ?? Infinity)) {
+        distances.set(index, candidate);
+        queue.push(index, candidate);
+      }
+    }
+  }
+
+  cache.bySet.set(key, distances);
   return distances;
 }

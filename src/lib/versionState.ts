@@ -10,6 +10,7 @@
 
 import type { DisplacementMap } from '@/lib/faceWarp';
 import type { AnchorRegion } from '@/lib/facialAnchors';
+import { DEFAULT_DRAPE } from '@/lib/facialSkeleton';
 
 /** Sobe quando o formato mudar de forma incompatível. */
 export const VERSION_STATE_SCHEMA = 1;
@@ -19,6 +20,8 @@ export interface VersionWarpState {
   radius: number;
   intensity: number;
   anchorRegions: AnchorRegion[];
+  /** Transição da manobra óssea. Ver `DEFAULT_DRAPE` em `facialSkeleton.ts`. */
+  drape: number;
 }
 
 /**
@@ -46,8 +49,14 @@ export interface VersionState {
 
 const ANCHOR_REGIONS: AnchorRegion[] = ['face_oval', 'eyes', 'eyebrows', 'lips'];
 
-/** JSON não transporta `Map`: os deslocamentos viajam como lista de pares. */
-type SerializedDisplacement = [number, { dx: number; dy: number }];
+/**
+ * JSON não transporta `Map`: os deslocamentos viajam como lista de pares.
+ *
+ * `dz` só existe quando a manobra óssea o produziu. Gravá-lo como `undefined` o faria
+ * sumir do JSON de qualquer forma; omitir é explícito e mantém pequenas as versões que só
+ * têm deformação de pele.
+ */
+type SerializedDisplacement = [number, { dx: number; dy: number; dz?: number }];
 
 interface SerializedState {
   schema: number;
@@ -56,6 +65,8 @@ interface SerializedState {
     radius: number;
     intensity: number;
     anchorRegions: AnchorRegion[];
+    /** Ausente nas versões gravadas antes da ferramenta de osso; a leitura repõe o padrão. */
+    drape?: number;
   };
   /**
    * Campo acrescentado depois, mantendo `schema: 1` de propósito: acrescentar campo
@@ -74,11 +85,12 @@ export function serializeVersionState(state: VersionState): SerializedState {
     warp: state.warp
       ? {
           displacements: [...state.warp.displacements.entries()].map(
-            ([index, { dx, dy }]) => [index, { dx, dy }],
+            ([index, { dx, dy, dz }]) => [index, dz ? { dx, dy, dz } : { dx, dy }],
           ),
           radius: state.warp.radius,
           intensity: state.warp.intensity,
           anchorRegions: state.warp.anchorRegions,
+          drape: state.warp.drape,
         }
       : undefined,
   };
@@ -97,10 +109,16 @@ function parseDisplacements(raw: unknown): DisplacementMap {
     const [index, displacement] = entry as [unknown, unknown];
     if (!isFiniteNumber(index) || index < 0) continue;
 
-    const { dx, dy } = (displacement ?? {}) as { dx?: unknown; dy?: unknown };
+    const { dx, dy, dz } = (displacement ?? {}) as {
+      dx?: unknown;
+      dy?: unknown;
+      dz?: unknown;
+    };
     if (!isFiniteNumber(dx) || !isFiniteNumber(dy)) continue;
 
-    map.set(index, { dx, dy });
+    // Versão gravada antes da ferramenta de osso não tem `dz`, e isso é válido: significa
+    // deformação sem componente de profundidade.
+    map.set(index, isFiniteNumber(dz) ? { dx, dy, dz } : { dx, dy });
   }
   return map;
 }
@@ -129,6 +147,7 @@ function parseWarp(raw: SerializedState['warp']): VersionWarpState | null {
     radius: isFiniteNumber(raw.radius) && raw.radius > 0 ? raw.radius : 0.08,
     intensity: isFiniteNumber(raw.intensity) && raw.intensity > 0 ? raw.intensity : 100,
     anchorRegions,
+    drape: isFiniteNumber(raw.drape) && raw.drape > 0 ? raw.drape : DEFAULT_DRAPE,
   };
 }
 
@@ -170,6 +189,7 @@ export function warpStatesEqual(a: VersionState, b: VersionState): boolean {
   if (
     a.warp.radius !== b.warp.radius ||
     a.warp.intensity !== b.warp.intensity ||
+    a.warp.drape !== b.warp.drape ||
     a.warp.anchorRegions.length !== b.warp.anchorRegions.length ||
     a.warp.displacements.size !== b.warp.displacements.size
   ) {
@@ -183,6 +203,7 @@ export function warpStatesEqual(a: VersionState, b: VersionState): boolean {
   for (const [index, displacement] of a.warp.displacements) {
     const other = b.warp.displacements.get(index);
     if (!other || other.dx !== displacement.dx || other.dy !== displacement.dy) return false;
+    if ((other.dz ?? 0) !== (displacement.dz ?? 0)) return false;
   }
 
   return true;

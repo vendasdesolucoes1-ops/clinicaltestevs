@@ -56,6 +56,8 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { toast } from 'sonner';
 import { getFaceTessellation } from '@/types/mediapipeTessellation';
 import { warpFace } from '@/lib/faceWarp';
+import { getBoneRegionIndices, type BoneRegion } from '@/lib/facialSkeleton';
+import { advanceVisibility, dragToAnatomical, resolveViewGeometry } from '@/lib/viewAxes';
 import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
 import type { MediaPipeMeshData } from '@/types/mediapipeMesh';
 import { isLandmarkVisible } from '@/types/mediapipeMeshPresets';
@@ -168,7 +170,13 @@ export default function Workbench() {
     anchorRegions,
     toggleAnchorRegion,
     anchoredLandmarkCount,
+    shift: shiftBone,
+    drape: warpDrape,
+    setDrape: setWarpDrape,
   } = useFaceWarp();
+
+  // Região óssea que a ferramenta de osso está modelando. Uma só na etapa 1.
+  const [boneRegion, setBoneRegion] = useState<BoneRegion>('mento');
 
   // Deslocamento máximo em mm, calculado no canvas (que conhece a escala da imagem e a
   // calibração). Null quando a foto não está calibrada.
@@ -253,7 +261,10 @@ export default function Workbench() {
         // nesta foto, amplitude z=0,180 contra x=0,234 e y=0,240. Escalar por 0,5
         // enquanto x e y vão por 2 achatava a profundidade em 4x — um relevo, não uma
         // cabeça. A profundidade é a do detector; a manobra do warp continua 2D.
-        z: -(point.z ?? 0) * 2,
+        // A manobra ÓSSEA acrescenta profundidade — é o que diferencia avançar um mento
+        // de deslizar a pele sobre ele. Um arraste de pele continua sem `dz`, então esta
+        // soma não muda nada para quem só usa a ferramenta antiga.
+        z: -((point.z ?? 0) + (displacement?.dz ?? 0)) * 2,
         // A UV usa a coordenada ORIGINAL: assim a textura acompanha o estiramento da
         // malha, em vez de deslizar sobre ela — mesmo princípio da deformação 2D.
         originalX: point.x,
@@ -541,7 +552,9 @@ export default function Workbench() {
   // Com a ferramenta de puxar pele ativa, desfazer age sobre a deformação — que não é
   // objeto do canvas e por isso ficava fora do histórico de anotações.
   const handleUndo = useCallback(() => {
-    if (activeTool === 'skin_pull') {
+    // Osso e pele compartilham o mapa de deslocamentos, então compartilham o histórico:
+    // com qualquer uma das duas ativa, desfazer age sobre a deformação.
+    if (activeTool === 'skin_pull' || activeTool === 'bone_sculpt') {
       if (!canUndoWarp) return;
       undoWarp();
       toast.info('Deformação desfeita', { duration: 1500 });
@@ -552,7 +565,7 @@ export default function Workbench() {
   }, [activeTool, canUndoWarp, undoWarp]);
 
   const handleRedo = useCallback(() => {
-    if (activeTool === 'skin_pull') {
+    if (activeTool === 'skin_pull' || activeTool === 'bone_sculpt') {
       if (!canRedoWarp) return;
       redoWarp();
       toast.info('Deformação refeita', { duration: 1500 });
@@ -562,9 +575,12 @@ export default function Workbench() {
     toast.info('Ação refeita', { duration: 1500 });
   }, [activeTool, canRedoWarp, redoWarp]);
 
+  // As duas ferramentas que escrevem no mapa de deslocamentos.
+  const isWarpTool = activeTool === 'skin_pull' || activeTool === 'bone_sculpt';
+
   const handleResetWarp = useCallback(() => {
     resetWarp();
-    toast.info('Pele restaurada ao original', { duration: 1500 });
+    toast.info('Deformação restaurada ao original', { duration: 1500 });
   }, [resetWarp]);
 
   const handleClear = useCallback(() => {
@@ -877,11 +893,52 @@ export default function Workbench() {
     return restored;
   }, [setMediaPipeMeshData, loadExistingAnalysis]);
 
+  // Ângulo declarado da foto aberta. É ele que diz como um arraste na tela se traduz em
+  // movimento anatômico — ver `viewAxes.ts`.
+  const currentPhotoAngle = useMemo(
+    () => caseData?.photos.find(photo => photo.id === currentPhotoId)?.angle,
+    [caseData, currentPhotoId],
+  );
+
+  // Quanto de um avanço a foto aberta consegue mostrar: 0 de frente, 1 de perfil.
+  const boneAdvanceVisibility = useMemo(() => {
+    if (!mediaPipeMeshData?.points?.length) return 0;
+    return advanceVisibility(resolveViewGeometry(mediaPipeMeshData.points, currentPhotoAngle));
+  }, [mediaPipeMeshData, currentPhotoAngle]);
+
   // PR-4: repassa o arraste ao motor de deformação, usando os landmarks já detectados.
   const handleWarpPull = useCallback((pointIndex: number, dx: number, dy: number) => {
     if (!mediaPipeMeshData?.points?.length) return;
     pullSkin(mediaPipeMeshData.points, pointIndex, dx, dy);
   }, [mediaPipeMeshData, pullSkin]);
+
+  // Ferramenta de osso: o arraste descreve para onde o bloco deve ir NA IMAGEM, e o
+  // ângulo da foto decide o que isso significa na anatomia — de perfil um arraste
+  // horizontal é avanço, de frente é deslocamento lateral. Ver `viewAxes.ts`.
+  const handleBoneShift = useCallback((dx: number, dy: number) => {
+    if (!mediaPipeMeshData?.points?.length) return;
+    const view = resolveViewGeometry(mediaPipeMeshData.points, currentPhotoAngle);
+    shiftBone(mediaPipeMeshData.points, boneRegion, dragToAnatomical(dx, dy, view), currentPhotoAngle);
+  }, [mediaPipeMeshData, shiftBone, boneRegion, currentPhotoAngle]);
+
+  // O avanço não pode vir do arraste numa foto de frente: ele aponta para dentro da tela.
+  // Por isso tem controle próprio, em que o cirurgião diz quanto quer avançar e o sistema
+  // projeta esse valor no que cada foto é capaz de mostrar.
+  const handleBoneAdvance = useCallback((advance: number) => {
+    if (!mediaPipeMeshData?.points?.length) return;
+    shiftBone(
+      mediaPipeMeshData.points,
+      boneRegion,
+      { advance, lateral: 0, vertical: 0 },
+      currentPhotoAngle,
+    );
+    // Um clique é um passo inteiro. Sem fechar aqui, todos os cliques seguidos viravam um
+    // único passo de desfazer — o arraste fecha no soltar do mouse, o botão não tem isso.
+    commitWarpStroke();
+  }, [mediaPipeMeshData, shiftBone, boneRegion, currentPhotoAngle, commitWarpStroke]);
+
+  // Índices do bloco selecionado, para o canvas destacá-lo.
+  const boneRegionIndices = useMemo(() => getBoneRegionIndices(boneRegion), [boneRegion]);
 
   // Estado que uma versão guarda hoje: a deformação e seus parâmetros. A coluna
   // `canvas_state` existia desde o início e nunca havia sido escrita — por isso trocar de
@@ -897,12 +954,13 @@ export default function Workbench() {
               radius: warpRadius,
               intensity: warpIntensity,
               anchorRegions,
+              drape: warpDrape,
             }
           : null,
       markings,
       frame,
     };
-  }, [warpDisplacements, warpRadius, warpIntensity, anchorRegions]);
+  }, [warpDisplacements, warpRadius, warpIntensity, anchorRegions, warpDrape]);
 
   // Estado que a versão aberta já contém, para saber se há trabalho não salvo.
   const savedStateRef = useRef<VersionState>({ warp: null, markings: [], frame: null });
@@ -917,7 +975,13 @@ export default function Workbench() {
       {
         warp:
           warpDisplacements.size > 0
-            ? { displacements: warpDisplacements, radius: warpRadius, intensity: warpIntensity, anchorRegions }
+            ? {
+                displacements: warpDisplacements,
+                radius: warpRadius,
+                intensity: warpIntensity,
+                anchorRegions,
+                drape: warpDrape,
+              }
             : null,
         markings: [],
         frame: null,
@@ -1244,6 +1308,8 @@ export default function Workbench() {
                 ref={canvasRef}
                 warpDisplacements={warpDisplacements}
                 onWarpPull={handleWarpPull}
+                onBoneShift={handleBoneShift}
+                boneRegionIndices={boneRegionIndices}
                 onWarpPullEnd={commitWarpStroke}
                 onAnnotationsChanged={handleAnnotationsChanged}
                 warpRadius={warpRadius}
@@ -1408,8 +1474,8 @@ export default function Workbench() {
             onUndo={handleUndo}
             onRedo={handleRedo}
             onClear={handleClear}
-            canUndo={activeTool === 'skin_pull' ? canUndoWarp : undoStack.length > 0}
-            canRedo={activeTool === 'skin_pull' ? canRedoWarp : redoStack.length > 0}
+            canUndo={isWarpTool ? canUndoWarp : undoStack.length > 0}
+            canRedo={isWarpTool ? canRedoWarp : redoStack.length > 0}
             isSimulating={mediaPipeStatus === 'processing'}
             onTriggerSimulation={handleTriggerSimulation}
             showMesh={showMesh}
@@ -1443,7 +1509,7 @@ export default function Workbench() {
             }}
             onGetCanvasImage={() => canvasRef.current?.getCanvasDataUrl() ?? null}
             caseName={caseData?.codename}
-            currentPhotoAngle={caseData?.photos.find((p) => p.id === currentPhotoId)?.angle}
+            currentPhotoAngle={currentPhotoAngle}
             onTriggerMeshAI={handleTriggerMeshAI}
             onAnalyzeDirect={handleAnalyzeDirect}
             warpRadius={warpRadius}
@@ -1452,6 +1518,12 @@ export default function Workbench() {
             onWarpIntensityChange={setWarpIntensity}
             hasWarp={hasWarp}
             warpPointCount={displacedPointCount}
+            boneRegion={boneRegion}
+            onBoneRegionChange={setBoneRegion}
+            boneDrape={warpDrape}
+            onBoneDrapeChange={setWarpDrape}
+            boneAdvanceVisibility={boneAdvanceVisibility}
+            onBoneAdvance={handleBoneAdvance}
             onResetWarp={handleResetWarp}
             anchorRegions={anchorRegions}
             onToggleAnchorRegion={toggleAnchorRegion}

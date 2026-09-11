@@ -5,6 +5,17 @@
 
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { computePull, type DisplacementMap } from '@/lib/faceWarp';
+import { computeBoneShift } from '@/lib/boneShift';
+import {
+  DEFAULT_DRAPE,
+  getBoneRegionIndices,
+  type BoneRegion,
+} from '@/lib/facialSkeleton';
+import {
+  anatomicalToCamera,
+  resolveViewGeometry,
+  type AnatomicalShift,
+} from '@/lib/viewAxes';
 import {
   buildAnchorStiffness,
   countAnchoredLandmarks,
@@ -36,8 +47,22 @@ interface UseFaceWarpReturn {
   /** Maior deslocamento aplicado, em coordenadas normalizadas. */
   maxDisplacement: number;
 
+  /** Largura da transição entre o bloco ósseo deslocado e o tecido vizinho. */
+  drape: number;
+  setDrape: (drape: number) => void;
+
   /** Puxa um landmark, propagando aos vizinhos dentro do raio. */
   pull: (landmarks: MediaPipePoint[], pointIndex: number, dx: number, dy: number) => void;
+  /**
+   * Desloca um bloco ósseo. A manobra é descrita em termos ANATÔMICOS (avanço, lateral,
+   * vertical) e convertida para o referencial da câmera segundo o ângulo da foto.
+   */
+  shift: (
+    landmarks: MediaPipePoint[],
+    region: BoneRegion,
+    movement: AnatomicalShift,
+    photoAngle: string | undefined,
+  ) => void;
   /** Fecha o arraste em curso, transformando-o em um passo do histórico. */
   commitStroke: () => void;
   /** Repõe um estado salvo (ao carregar uma versão). */
@@ -46,6 +71,7 @@ interface UseFaceWarpReturn {
     radius: number;
     intensity: number;
     anchorRegions: AnchorRegion[];
+    drape: number;
   } | null) => void;
   canUndo: boolean;
   canRedo: boolean;
@@ -59,6 +85,7 @@ export function useFaceWarp(): UseFaceWarpReturn {
   const [radius, setRadius] = useState(DEFAULT_RADIUS);
   const [intensity, setIntensity] = useState(DEFAULT_INTENSITY);
   const [anchorRegions, setAnchorRegions] = useState<AnchorRegion[]>(DEFAULT_ANCHOR_REGIONS);
+  const [drape, setDrape] = useState(DEFAULT_DRAPE);
 
   // Um arraste dispara dezenas de chamadas a `pull` — uma por quadro. O passo do histórico
   // é o arraste inteiro, não cada quadro: desfazer devolve ao estado de antes de encostar
@@ -90,6 +117,37 @@ export function useFaceWarp(): UseFaceWarpReturn {
     [displacements, radius, intensity, anchorRegions],
   );
 
+  // Osso e pele escrevem no MESMO mapa de deslocamentos, de propósito: uma manobra óssea
+  // sob uma pele já deformada compõe com ela, e o histórico, a versão salva e a exportação
+  // continuam com uma única fonte de verdade. A ancoragem de `facialAnchors` NÃO entra
+  // aqui — ela existe para segurar a pele sobre um esqueleto parado, e travaria justamente
+  // o contorno que uma mentoplastia move.
+  const shift = useCallback(
+    (
+      landmarks: MediaPipePoint[],
+      region: BoneRegion,
+      movement: AnatomicalShift,
+      photoAngle: string | undefined,
+    ) => {
+      // A INTENSIDADE NÃO ENTRA AQUI, ao contrário de `pull`. Lá ela regula o "peso" de
+      // um gesto manual; aqui a manobra é uma grandeza declarada — um avanço de 6 mm tem
+      // de ser 6 mm, não 6 mm vezes o que o controle da outra ferramenta ficou marcando.
+      const view = resolveViewGeometry(landmarks, photoAngle);
+      const cameraShift = anatomicalToCamera(movement, view);
+
+      if (!strokeBaseRef.current) strokeBaseRef.current = displacements;
+
+      setDisplacements(current =>
+        computeBoneShift(landmarks, current, {
+          regionIndices: getBoneRegionIndices(region),
+          shift: cameraShift,
+          drape,
+        }),
+      );
+    },
+    [displacements, drape],
+  );
+
   // Carregar uma versão é trocar de estado, não editar o atual: o histórico é zerado
   // junto. Desfazer atravessando a fronteira entre duas versões devolveria a deformação
   // de uma sobre a foto da outra.
@@ -107,6 +165,7 @@ export function useFaceWarp(): UseFaceWarpReturn {
     setRadius(state.radius);
     setIntensity(state.intensity);
     setAnchorRegions(state.anchorRegions);
+    setDrape(state.drape);
   }, []);
 
   const commitStroke = useCallback(() => {
@@ -165,8 +224,8 @@ export function useFaceWarp(): UseFaceWarpReturn {
   // quando a foto está calibrada.
   const maxDisplacement = useMemo(() => {
     let largest = 0;
-    displacements.forEach(({ dx, dy }) => {
-      largest = Math.max(largest, Math.hypot(dx, dy));
+    displacements.forEach(({ dx, dy, dz }) => {
+      largest = Math.max(largest, Math.hypot(dx, dy, dz ?? 0));
     });
     return largest;
   }, [displacements]);
@@ -183,7 +242,10 @@ export function useFaceWarp(): UseFaceWarpReturn {
     toggleAnchorRegion,
     anchoredLandmarkCount,
     maxDisplacement,
+    drape,
+    setDrape,
     pull,
+    shift,
     commitStroke,
     loadState,
     canUndo: past.length > 0,
