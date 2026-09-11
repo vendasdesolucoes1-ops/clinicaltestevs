@@ -261,6 +261,27 @@ export default function Workbench() {
         // nesta foto, amplitude z=0,180 contra x=0,234 e y=0,240. Escalar por 0,5
         // enquanto x e y vão por 2 achatava a profundidade em 4x — um relevo, não uma
         // cabeça. A profundidade é a do detector; a manobra do warp continua 2D.
+        //
+        // QUANTO VALE ESSA PROFUNDIDADE. Medido sobre uma foto real, comparando o relevo
+        // estimado entre variações da MESMA imagem, com a largura facial como régua
+        // (137 mm de bizigomático adulto assumidos só para dar escala legível):
+        //
+        //   relevo total da face                          107 mm  (sinal, 18,6 mm RMS)
+        //   enquadramento mais fechado                    0,93 mm RMS
+        //   inclinação de cabeça de 6 graus               1,07 mm RMS
+        //   mesma foto a 1/4 da resolução                 2,26 mm RMS
+        //   imagem girada 90 graus (caso extremo)         4,43 mm RMS, relevo -24%
+        //
+        // Ou seja: em condições de consultório a profundidade é REPETÍVEL a cerca de
+        // 1 mm, e a forma do relevo é praticamente idêntica entre variações
+        // (correlação > 0,998). Isso é precisão.
+        //
+        // O QUE ISSO NÃO DIZ: se o relevo é DESTE paciente ou um template genérico
+        // aplicado com consistência. Um template seria perfeitamente repetível e ainda
+        // assim errado para o caso. Exatidão exige comparar com um perfil da mesma
+        // pessoa — é a medição que falta, e é ela que decide se a fusão multivista
+        // agrega. Se agregar, será corrigindo erro SISTEMÁTICO, não ruído: ruído já
+        // está em 1 mm.
         // A manobra ÓSSEA acrescenta profundidade — é o que diferencia avançar um mento
         // de deslizar a pele sobre ele. Um arraste de pele continua sem `dz`, então esta
         // soma não muda nada para quem só usa a ferramenta antiga.

@@ -923,28 +923,9 @@ export function ToolPanel({
                 {/* Etapa 1 da ferramenta óssea: bloco deslocado, pele drapejando por cima */}
                 {activeTool === 'bone_sculpt' && (
                   <div className="space-y-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full h-8 gap-1.5"
-                      onClick={onResetWarp}
-                      disabled={!hasWarp}
-                    >
-                      <Undo2 className="h-3.5 w-3.5" />
-                      <span className="text-xs">
-                        {hasWarp ? `Voltar ao original (${warpPointCount} pontos)` : 'Sem deformação'}
-                      </span>
-                    </Button>
-
-                    <div className="flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/20">
-                      <Activity className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
-                      <p className="text-[10px] text-muted-foreground leading-relaxed">
-                        Deformação <strong className="text-foreground">geométrica</strong>: mostra como a
-                        superfície ficaria se o suporte ósseo se deslocasse assim. Não há osteotomia,
-                        fixação nem resposta do tecido ao longo do tempo — não prediz o resultado.
-                      </p>
-                    </div>
-
+                    {/* Primeiro item do painel. Enterrada abaixo do aviso, a escolha de região
+                        caía fora da tela — e sem ela a ferramenta só alcança a região padrão.
+                        Mesma armadilha já anotada no painel de puxar pele. */}
                     <div className="space-y-2">
                       <Label className="text-xs">Região</Label>
                       <div className="grid grid-cols-2 gap-1.5">
@@ -969,6 +950,28 @@ export function ToolPanel({
                       <p className="text-[10px] text-muted-foreground leading-relaxed">
                         Arraste sobre o rosto para deslocar o bloco inteiro. A região anda rígida; só
                         o tecido ao redor dela sofre transição.
+                      </p>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 gap-1.5"
+                      onClick={onResetWarp}
+                      disabled={!hasWarp}
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      <span className="text-xs">
+                        {hasWarp ? `Voltar ao original (${warpPointCount} pontos)` : 'Sem deformação'}
+                      </span>
+                    </Button>
+
+                    <div className="flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/20">
+                      <Activity className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Deformação <strong className="text-foreground">geométrica</strong>: mostra como a
+                        superfície ficaria se o suporte ósseo se deslocasse assim. Não há osteotomia,
+                        fixação nem resposta do tecido ao longo do tempo — não prediz o resultado.
                       </p>
                     </div>
 
