@@ -552,9 +552,16 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         return;
       }
 
+      // A PROFUNDIDADE ENTRA NA CONTA. Sem ela, um avanço de mento numa foto de frente —
+      // que é deslocamento puro em z — marcaria 0 mm, e o cirurgião leria "não fiz nada"
+      // justamente na manobra que a ferramenta óssea existe para fazer.
+      //
+      // A conversão trata uma unidade de profundidade como uma unidade de largura, que é
+      // a mesma escala que a malha 3D já usa. Para o avanço isso é consistente: o valor
+      // foi DECLARADO pelo cirurgião nessa escala, não estimado da foto.
       let largestNormalized = 0;
-      warpDisplacements.forEach(({ dx, dy }) => {
-        largestNormalized = Math.max(largestNormalized, Math.hypot(dx, dy));
+      warpDisplacements.forEach(({ dx, dy, dz }) => {
+        largestNormalized = Math.max(largestNormalized, Math.hypot(dx, dy, dz ?? 0));
       });
 
       if (!isCalibrated || !pixelsPerMm || !imageBounds.width) {
