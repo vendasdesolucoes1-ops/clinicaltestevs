@@ -1545,6 +1545,7 @@ export default function Workbench() {
             onBoneDrapeChange={setWarpDrape}
             boneAdvanceVisibility={boneAdvanceVisibility}
             onBoneAdvance={handleBoneAdvance}
+            casePhotos={caseData?.photos}
             onResetWarp={handleResetWarp}
             anchorRegions={anchorRegions}
             onToggleAnchorRegion={toggleAnchorRegion}

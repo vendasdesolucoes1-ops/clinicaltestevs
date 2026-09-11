@@ -74,6 +74,7 @@ import {
 } from '@/lib/facialSkeleton';
 import { SymmetryIndicator } from './SymmetryIndicator';
 import { AnalysisHistory } from './AnalysisHistory';
+import { DepthAccuracyPanel, type DepthAccuracyPhoto } from './DepthAccuracyPanel';
 import { Generate3DButton } from './Generate3DButton';
 import { AnatomicalMeasurementsPanel } from './AnatomicalMeasurements';
 import { 
@@ -167,6 +168,8 @@ interface ToolPanelProps {
   /** Quanto de um avanço a foto aberta mostra: 0 de frente, 1 de perfil. */
   boneAdvanceVisibility?: number;
   onBoneAdvance?: (advance: number) => void;
+  /** Fotos do caso, para conferir a profundidade estimada contra o perfil. */
+  casePhotos?: DepthAccuracyPhoto[];
   
   // Active points counter
   activePointsCount?: number;
@@ -329,6 +332,7 @@ export function ToolPanel({
   onBoneDrapeChange,
   boneAdvanceVisibility = 0,
   onBoneAdvance,
+  casePhotos,
   isMeshAILoading,
   activePointsCount,
   // 3D Model generation (Meshy AI)
@@ -746,6 +750,19 @@ export function ToolPanel({
                 measurements={anatomicalMeasurements}
                 isCalibrated={isCalibrated}
               />
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Confere a profundidade estimada contra o perfil do próprio caso */}
+          <AccordionItem value="depth" className="border-b border-border">
+            <AccordionTrigger className="px-3 py-2.5 text-xs">
+              <span className="flex items-center gap-2">
+                <Ruler className="h-3.5 w-3.5 text-muted-foreground" />
+                Conferir Profundidade
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-3 pb-3">
+              <DepthAccuracyPanel photos={casePhotos} />
             </AccordionContent>
           </AccordionItem>
 
