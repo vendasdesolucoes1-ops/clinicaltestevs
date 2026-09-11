@@ -27,6 +27,7 @@ import {
   Loader2,
   ScanFace,
   Hand,
+  Bone,
   FileText,
   Target,
   Crosshair,
@@ -65,6 +66,12 @@ import { type MeshDensity, type SymmetryResult, MESH_PRESETS } from '@/types/fac
 import { type MeshEditMode } from '@/hooks/useFacialAnalysis';
 import { type MeshVisualStyle } from './MediaPipeMeshRenderer';
 import { ANCHOR_REGION_LABELS, ANCHOR_REGION_HINTS, type AnchorRegion } from '@/lib/facialAnchors';
+import {
+  BONE_REGION_LABELS,
+  BONE_REGION_HINTS,
+  DEFAULT_DRAPE,
+  type BoneRegion,
+} from '@/lib/facialSkeleton';
 import { SymmetryIndicator } from './SymmetryIndicator';
 import { AnalysisHistory } from './AnalysisHistory';
 import { Generate3DButton } from './Generate3DButton';
@@ -78,7 +85,7 @@ import {
   type InterventionType,
 } from '@/types/clinicalTools';
 
-export type ToolType = 'select' | 'correction_vector' | 'intervention_area' | 'surgical_marking' | 'skin_pull' | 'annotate' | 'eraser' | 'measure' | 'angle';
+export type ToolType = 'select' | 'correction_vector' | 'intervention_area' | 'surgical_marking' | 'skin_pull' | 'bone_sculpt' | 'annotate' | 'eraser' | 'measure' | 'angle';
 
 // Legacy type alias for backwards compatibility
 export type LegacyToolType = 'warp' | 'volume' | 'incision' | 'suture';
@@ -153,6 +160,13 @@ interface ToolPanelProps {
   onToggleAnchorRegion?: (region: AnchorRegion) => void;
   anchoredLandmarkCount?: number;
   warpMeasureMm?: number | null;
+  boneRegion?: BoneRegion;
+  onBoneRegionChange?: (region: BoneRegion) => void;
+  boneDrape?: number;
+  onBoneDrapeChange?: (drape: number) => void;
+  /** Quanto de um avanço a foto aberta mostra: 0 de frente, 1 de perfil. */
+  boneAdvanceVisibility?: number;
+  onBoneAdvance?: (advance: number) => void;
   
   // Active points counter
   activePointsCount?: number;
@@ -199,7 +213,19 @@ const PLANNING_TOOLS: { id: ToolType; icon: React.ElementType; label: string; to
     tooltip: 'Arraste sobre o rosto para deslocar a pele. Deformação geométrica sobre a malha detectada — visualização, não predição cirúrgica.',
     shortcut: '9'
   },
+  {
+    id: 'bone_sculpt',
+    icon: Bone,
+    label: 'Modelar Osso',
+    tooltip: 'Desloca um bloco ósseo inteiro, com a pele acompanhando por cima. O avanço aparece no perfil e na malha 3D; na foto de frente ele aponta para dentro da tela.',
+    shortcut: '0'
+  },
 ];
+
+// Passo de avanço/recuo, em coordenadas normalizadas. ~0,5% da largura da imagem: com a
+// face ocupando tipicamente metade do quadro, fica na ordem de 1 mm num retrato padrão —
+// perto da granularidade com que uma mentoplastia é discutida.
+const ADVANCE_STEP = 0.005;
 
 const UTILITY_TOOLS: { id: ToolType; icon: React.ElementType; label: string; tooltip: string; shortcut: string }[] = [
   { id: 'select', icon: Move, label: 'Selecionar', tooltip: 'Selecione e mova elementos no canvas.', shortcut: '4' },
@@ -297,6 +323,12 @@ export function ToolPanel({
   onToggleAnchorRegion,
   anchoredLandmarkCount = 0,
   warpMeasureMm = null,
+  boneRegion = 'mento',
+  onBoneRegionChange,
+  boneDrape = DEFAULT_DRAPE,
+  onBoneDrapeChange,
+  boneAdvanceVisibility = 0,
+  onBoneAdvance,
   isMeshAILoading,
   activePointsCount,
   // 3D Model generation (Meshy AI)
@@ -765,7 +797,8 @@ export function ToolPanel({
                 {activeTool === 'intervention_area' && 'Área de Intervenção'}
                 {activeTool === 'surgical_marking' && 'Marcação Cirúrgica'}
                 {activeTool === 'skin_pull' && 'Puxar Pele'}
-                {!['correction_vector', 'intervention_area', 'surgical_marking', 'skin_pull'].includes(activeTool) && 'Parâmetros'}
+                {activeTool === 'bone_sculpt' && 'Modelar Osso'}
+                {!['correction_vector', 'intervention_area', 'surgical_marking', 'skin_pull', 'bone_sculpt'].includes(activeTool) && 'Parâmetros'}
               </span>
             </AccordionTrigger>
             <AccordionContent className="px-3 pb-3">
@@ -884,6 +917,134 @@ export function ToolPanel({
                       </div>
                     </div>
 
+                  </div>
+                )}
+
+                {/* Etapa 1 da ferramenta óssea: bloco deslocado, pele drapejando por cima */}
+                {activeTool === 'bone_sculpt' && (
+                  <div className="space-y-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 gap-1.5"
+                      onClick={onResetWarp}
+                      disabled={!hasWarp}
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      <span className="text-xs">
+                        {hasWarp ? `Voltar ao original (${warpPointCount} pontos)` : 'Sem deformação'}
+                      </span>
+                    </Button>
+
+                    <div className="flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/20">
+                      <Activity className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Deformação <strong className="text-foreground">geométrica</strong>: mostra como a
+                        superfície ficaria se o suporte ósseo se deslocasse assim. Não há osteotomia,
+                        fixação nem resposta do tecido ao longo do tempo — não prediz o resultado.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs">Região</Label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(Object.keys(BONE_REGION_LABELS) as BoneRegion[]).map(region => (
+                          <Tooltip key={region}>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant={boneRegion === region ? 'tool-active' : 'outline'}
+                                size="sm"
+                                className="h-7 px-2 text-[11px] justify-start"
+                                onClick={() => onBoneRegionChange?.(region)}
+                              >
+                                {BONE_REGION_LABELS[region]}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-[220px]">
+                              <p className="text-xs">{BONE_REGION_HINTS[region]}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Arraste sobre o rosto para deslocar o bloco inteiro. A região anda rígida; só
+                        o tecido ao redor dela sofre transição.
+                      </p>
+                    </div>
+
+                    {/* Projeção: o eixo que uma foto de frente não consegue mostrar */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Projeção</Label>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {boneAdvanceVisibility < 0.15
+                            ? 'só na malha 3D'
+                            : `${Math.round(boneAdvanceVisibility * 100)}% visível`}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px]"
+                          onClick={() => onBoneAdvance?.(-ADVANCE_STEP)}
+                        >
+                          Recuar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px]"
+                          onClick={() => onBoneAdvance?.(ADVANCE_STEP)}
+                        >
+                          Avançar
+                        </Button>
+                      </div>
+                      {boneAdvanceVisibility < 0.15 && (
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          Nesta foto o avanço aponta para dentro da tela, então quase não aparece no
+                          2D — isso é o que uma foto de frente faz com esse movimento, não uma falha.
+                          Veja o efeito na malha 3D, ou abra o perfil do mesmo caso.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Transição</Label>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {(boneDrape * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <Slider
+                        value={[boneDrape * 100]}
+                        onValueChange={([v]) => onBoneDrapeChange?.(v / 100)}
+                        min={1}
+                        max={15}
+                        step={1}
+                      />
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Largura em que o deslocamento do bloco se dissolve no tecido vizinho. Muito
+                        estreita cria um degrau na borda; muito larga espalha a manobra pela face.
+                      </p>
+                    </div>
+
+                    <div className="rounded-md border border-border p-2 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Deslocamento máximo</Label>
+                        <span className="text-xs font-mono text-foreground">
+                          {warpMeasureMm !== null
+                            ? `${warpMeasureMm.toFixed(1)} mm`
+                            : hasWarp ? '— sem escala' : '0'}
+                        </span>
+                      </div>
+                      {warpMeasureMm === null && hasWarp && (
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          Calibre a foto para acompanhar a manobra em milímetros — avanço de mento se
+                          discute em mm, não em porcentagem.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
 

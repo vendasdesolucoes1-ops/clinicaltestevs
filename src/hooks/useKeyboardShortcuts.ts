@@ -36,6 +36,7 @@ const TOOL_MAP: Record<string, ToolType> = {
   '6': 'eraser',
   '7': 'measure',
   '8': 'angle',
+  '0': 'bone_sculpt',
 };
 
 export function useKeyboardShortcuts({

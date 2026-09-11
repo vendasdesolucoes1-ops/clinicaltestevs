@@ -48,6 +48,10 @@ interface SimulationCanvasProps {
   onWarpPull?: (pointIndex: number, dx: number, dy: number) => void;
   /** Fim do arraste: fecha o passo do histórico. */
   onWarpPullEnd?: () => void;
+  /** Arraste da ferramenta óssea, em coordenadas normalizadas da imagem. */
+  onBoneShift?: (dx: number, dy: number) => void;
+  /** Landmarks que formam o bloco ósseo selecionado, para destacá-lo na tela. */
+  boneRegionIndices?: readonly number[];
   /** Alguma marcação foi criada, movida ou removida. */
   onAnnotationsChanged?: () => void;
   /** Raio de influência, para desenhar a prévia sob o cursor. */
@@ -76,6 +80,7 @@ const TOOL_COLORS: Record<ToolType, string> = {
   intervention_area: '#22c55e', // Área de intervenção
   surgical_marking: '#ef4444',  // Marcação cirúrgica
   skin_pull: '#ec4899',         // Puxar pele (deformação)
+  bone_sculpt: '#a855f7',       // Modelar osso (bloco)
   annotate: '#0ea5e9',
   eraser: '#64748b',
   measure: '#7c3aed',
@@ -88,6 +93,7 @@ const TOOL_CURSORS: Record<ToolType, string> = {
   intervention_area: 'crosshair',
   surgical_marking: 'crosshair',
   skin_pull: 'grab',
+  bone_sculpt: 'grab',
   annotate: 'text',
   eraser: 'pointer',
   measure: 'crosshair',
@@ -206,7 +212,7 @@ const createWarpArrow = (
 };
 
 export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvasProps>(
-  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull, onWarpPullEnd, onAnnotationsChanged, warpRadius, onWarpMeasureChange }, ref) => {
+  ({ imageUrl, activeTool, isPanMode, onObjectAdded, meshData, mediaPipeMeshData, showMesh = true, meshOpacity = 80, meshDensity = 'clinico', meshVisualStyle = 'minimal', meshEditMode = 'move', connectingFrom, onMeshPointMove, onMeshPointAdd, onMeshPointRemove, onMeshStartConnection, onMeshAddConnection, onMeshRemoveConnection, warpDisplacements, onWarpPull, onWarpPullEnd, onBoneShift, boneRegionIndices, onAnnotationsChanged, warpRadius, onWarpMeasureChange }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -220,6 +226,11 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     const sourceImageElRef = useRef<HTMLImageElement | null>(null);
     const warpCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const pullAnchorRef = useRef<{ pointIndex: number; x: number; y: number } | null>(null);
+    const boneAnchorRef = useRef<{ x: number; y: number } | null>(null);
+    // Lida dentro dos handlers do Fabric, que são registrados uma vez: sem a ref, trocar
+    // de região não mudaria o que o clique reconhece — mesma armadilha de fechamento que
+    // já deixou o controle de raio inerte.
+    const boneRegionIndicesRef = useRef(boneRegionIndices);
 
     // As callbacks do warp mudam a cada ajuste de raio, intensidade ou ancoragem — e a
     // cada quadro do arraste. O efeito que registra os handlers do Fabric não as observa,
@@ -227,6 +238,7 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     // tinha efeito até trocar de ferramenta e voltar. A ref sempre aponta para a atual.
     const onWarpPullRef = useRef(onWarpPull);
     const onWarpPullEndRef = useRef(onWarpPullEnd);
+    const onBoneShiftRef = useRef(onBoneShift);
     const onAnnotationsChangedRef = useRef(onAnnotationsChanged);
     // Restaurar uma versão adiciona e remove objetos, mas isso não é edição do usuário: sem
     // silenciar, a versão nasceria marcada como "não salva" no instante em que foi aberta.
@@ -234,6 +246,8 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
     useEffect(() => {
       onWarpPullRef.current = onWarpPull;
       onWarpPullEndRef.current = onWarpPullEnd;
+      onBoneShiftRef.current = onBoneShift;
+      boneRegionIndicesRef.current = boneRegionIndices;
       onAnnotationsChangedRef.current = onAnnotationsChanged;
     });
     const [isMouseOverCanvas, setIsMouseOverCanvas] = useState(false);
@@ -680,6 +694,22 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
         return Math.sqrt(nearestDistance) > 0.12 ? null : nearestIndex;
       };
 
+      // O clique pegou o bloco ósseo selecionado? Mede até o landmark mais próximo DELE,
+      // com a mesma tolerância do resto do canvas.
+      const isPointerOnBoneRegion = (normalized: { x: number; y: number }) => {
+        const landmarks = mediaPipeMeshData?.points;
+        const indices = boneRegionIndicesRef.current;
+        if (!landmarks?.length || !indices?.length) return false;
+
+        let nearest = Infinity;
+        for (const index of indices) {
+          const point = landmarks[index];
+          if (!point) continue;
+          nearest = Math.min(nearest, Math.hypot(point.x - normalized.x, point.y - normalized.y));
+        }
+        return nearest <= 0.12;
+      };
+
     // Handle mouse events for other tools
       const handleMouseDown = (e: any) => {
         const pointer = canvas.getPointer(e.e);
@@ -692,6 +722,20 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
             return;
           }
           pullAnchorRef.current = { pointIndex: nearest, x: normalized.x, y: normalized.y };
+          return;
+        }
+
+        if (activeTool === 'bone_sculpt') {
+          const normalized = toNormalized(pointer);
+          // O arraste move a REGIÃO selecionada, não o ponto clicado — por isso o que se
+          // exige do clique é que ele pegue o bloco, e não que encontre um landmark
+          // qualquer. Clicar longe dele quase sempre significa que o cirurgião pensou que
+          // estava puxando pele.
+          if (!isPointerOnBoneRegion(normalized)) {
+            toast.info('Clique sobre a região óssea destacada para deslocá-la');
+            return;
+          }
+          boneAnchorRef.current = { x: normalized.x, y: normalized.y };
           return;
         }
         
@@ -916,9 +960,11 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
           warpStartRef.current = null;
         }
 
-        // Só fecha um passo se o arraste chegou a existir.
-        if (pullAnchorRef.current) {
+        // Só fecha um passo se o arraste chegou a existir. Osso e pele fecham o mesmo
+        // passo de histórico: escrevem no mesmo mapa de deslocamentos.
+        if (pullAnchorRef.current || boneAnchorRef.current) {
           pullAnchorRef.current = null;
+          boneAnchorRef.current = null;
           onWarpPullEndRef.current?.();
         }
       };
@@ -926,6 +972,18 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
       const handleMouseMove = (e: any) => {
         const pointer = canvas.getPointer(e.e);
         setCursorPosition({ x: pointer.x, y: pointer.y });
+
+        const boneAnchor = boneAnchorRef.current;
+        if (activeTool === 'bone_sculpt' && boneAnchor && onBoneShiftRef.current) {
+          const normalized = toNormalized(pointer);
+          const dx = normalized.x - boneAnchor.x;
+          const dy = normalized.y - boneAnchor.y;
+          if (Math.hypot(dx, dy) < 0.002) return;
+
+          onBoneShiftRef.current(dx, dy);
+          boneAnchorRef.current = { x: normalized.x, y: normalized.y };
+          return;
+        }
 
         const anchor = pullAnchorRef.current;
         if (activeTool !== 'skin_pull' || !anchor || !onWarpPullRef.current) return;
@@ -1329,6 +1387,27 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
 
       return { anchor, reached };
     }, [activeTool, isMouseOverCanvas, mediaPipeMeshData, warpRadius, cursorPosition, imageBounds]);
+
+    // Destaque do bloco ósseo selecionado. Diferente da prévia de puxar pele, não depende
+    // da posição do cursor: a região é fixa, e mostrá-la o tempo todo é o que deixa claro
+    // que a ferramenta move um bloco definido, não o ponto onde se clicou.
+    const bonePreview = useMemo(() => {
+      const landmarks = mediaPipeMeshData?.points;
+      if (activeTool !== 'bone_sculpt') return null;
+      if (!landmarks?.length || !boneRegionIndices?.length || !imageBounds.width) return null;
+
+      // Desenhado já deslocado: é onde o bloco está agora, não onde começou.
+      const points = boneRegionIndices
+        .map(index => {
+          const point = landmarks[index];
+          if (!point) return null;
+          const displacement = warpDisplacements?.get(index);
+          return { x: point.x + (displacement?.dx ?? 0), y: point.y + (displacement?.dy ?? 0) };
+        })
+        .filter((point): point is { x: number; y: number } => point !== null);
+
+      return points.length > 0 ? points : null;
+    }, [activeTool, mediaPipeMeshData, boneRegionIndices, warpDisplacements, imageBounds]);
 
     const handleZoomIn = () => {
       const canvas = fabricRef.current;
@@ -1904,6 +1983,32 @@ export const SimulationCanvas = forwardRef<SimulationCanvasRef, SimulationCanvas
                     );
                   })}
                   <circle cx={center.x} cy={center.y} r={4} fill="#0ea5e9" />
+                </g>
+              );
+            })()}
+          </svg>
+        )}
+
+        {/* Bloco ósseo selecionado. Mostrado sempre que a ferramenta está ativa, para que
+            fique visível ANTES do primeiro arraste o que exatamente vai se mover. */}
+        {bonePreview && (
+          <svg className="absolute inset-0 pointer-events-none z-30" style={{ width: '100%', height: '100%' }}>
+            {(() => {
+              const panX = fabricRef.current?.viewportTransform?.[4] || 0;
+              const panY = fabricRef.current?.viewportTransform?.[5] || 0;
+
+              return (
+                <g>
+                  {bonePreview.map((point, index) => (
+                    <circle
+                      key={index}
+                      cx={(imageBounds.left + point.x * imageBounds.width) * zoom + panX}
+                      cy={(imageBounds.top + point.y * imageBounds.height) * zoom + panY}
+                      r={3}
+                      fill="#a855f7"
+                      opacity={0.75}
+                    />
+                  ))}
                 </g>
               );
             })()}

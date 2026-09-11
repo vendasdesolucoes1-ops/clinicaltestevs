@@ -22,6 +22,7 @@ const TOOL_LABELS: Record<ToolType, string> = {
   intervention_area: 'Área de Intervenção',
   surgical_marking: 'Marcação Cirúrgica',
   skin_pull: 'Puxar Pele',
+  bone_sculpt: 'Modelar Osso',
   annotate: 'Anotar',
   eraser: 'Borracha',
   measure: 'Medir',

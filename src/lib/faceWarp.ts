@@ -22,6 +22,16 @@ interface PixelPoint {
 export interface Displacement {
   dx: number;
   dy: number;
+  /**
+   * Profundidade, na convenção do MediaPipe (mais negativo é mais perto da câmera).
+   *
+   * Opcional porque a ferramenta de pele não produz profundidade: um arraste sobre a foto
+   * é paralelo à tela. Quem preenche é a manobra óssea, onde a projeção é justamente o
+   * que muda. `warpFace` ignora este campo DE PROPÓSITO — uma foto não mostra o que se
+   * move para dentro dela; o efeito aparece na malha 3D e, quando a foto é de perfil,
+   * já vem convertido em dx por `viewAxes.ts`.
+   */
+  dz?: number;
 }
 
 export type DisplacementMap = Map<number, Displacement>;
