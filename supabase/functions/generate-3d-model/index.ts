@@ -1,9 +1,19 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { jsonResponse, preflight } from "../_shared/cors.ts";
 import { canAccessCase, resolveCaller } from "../_shared/auth.ts";
+import { downloadWithLimit, fetchWithTimeout } from "../_shared/http.ts";
 
 const MESHY_API_URL = "https://api.meshy.ai";
+
+// C-4: prazos por tipo de chamada. Criar e consultar tarefa são operações rápidas da
+// API; baixar o modelo é transferência de arquivo e merece muito mais folga.
+const MESHY_API_TIMEOUT_MS = 30_000;
+const MODEL_DOWNLOAD_TIMEOUT_MS = 120_000;
+// O alvo é 50.000 polígonos; um GLB assim fica na casa de poucos megabytes. 200 MB é
+// teto largo o bastante para não recusar caso legítimo e estreito o bastante para não
+// deixar a função tentar carregar um arquivo absurdo na memória.
+const MAX_MODEL_BYTES = 200 * 1024 * 1024;
 
 interface MeshyTaskResponse {
   result: string;
@@ -28,7 +38,7 @@ interface MeshyTaskStatus {
 async function createMeshyTask(imageUrl: string, apiKey: string): Promise<string> {
   console.log("Creating Meshy task for image:", imageUrl);
   
-  const response = await fetch(`${MESHY_API_URL}/openapi/v1/image-to-3d`, {
+  const response = await fetchWithTimeout(`${MESHY_API_URL}/openapi/v1/image-to-3d`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
@@ -42,7 +52,7 @@ async function createMeshyTask(imageUrl: string, apiKey: string): Promise<string
       symmetry_mode: "auto",
       should_remesh: true,
     }),
-  });
+  }, MESHY_API_TIMEOUT_MS);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -56,12 +66,12 @@ async function createMeshyTask(imageUrl: string, apiKey: string): Promise<string
 }
 
 async function checkMeshyTaskStatus(taskId: string, apiKey: string): Promise<MeshyTaskStatus> {
-  const response = await fetch(`${MESHY_API_URL}/openapi/v1/image-to-3d/${taskId}`, {
+  const response = await fetchWithTimeout(`${MESHY_API_URL}/openapi/v1/image-to-3d/${taskId}`, {
     method: "GET",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
     },
-  });
+  }, MESHY_API_TIMEOUT_MS);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -72,21 +82,37 @@ async function checkMeshyTaskStatus(taskId: string, apiKey: string): Promise<Mes
   return await response.json();
 }
 
+/** Código do Postgres para violação de restrição única. */
+const UNIQUE_VIOLATION = "23505";
+
+/** A linha já gravada para esta tarefa da Meshy, se existir. */
+async function findScanByTask(supabase: SupabaseClient, taskId: string) {
+  const { data, error } = await supabase
+    .from("case_3d_scans")
+    .select("*")
+    .eq("meshy_task_id", taskId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Falha ao consultar scan por task_id:", error.message);
+    return null;
+  }
+  return data;
+}
+
 async function downloadAndUploadModel(
   glbUrl: string,
   caseId: string,
   supabase: any
 ): Promise<{ storagePath: string; publicUrl: string }> {
   console.log("Downloading GLB from Meshy:", glbUrl);
-  
-  const response = await fetch(glbUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download GLB: ${response.status}`);
-  }
 
-  const arrayBuffer = await response.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
-  
+  const uint8Array = await downloadWithLimit(
+    glbUrl,
+    MAX_MODEL_BYTES,
+    MODEL_DOWNLOAD_TIMEOUT_MS,
+  );
+
   const fileName = `${caseId}/meshy-${Date.now()}.glb`;
   
   console.log("Uploading to Supabase Storage:", fileName);
@@ -173,8 +199,18 @@ serve(async (req) => {
       }
 
       console.log("Finalizing task:", task_id);
+
+      // C-2: esta tarefa já foi finalizada? O cliente consulta a cada 5s por até dez
+      // minutos, e um retry ou uma segunda aba criariam um segundo download e uma
+      // segunda linha do mesmo modelo.
+      const existing = await findScanByTask(supabase, task_id);
+      if (existing) {
+        console.log("Task already finalized, returning existing scan:", existing.id);
+        return jsonResponse(req, { success: true, scan: existing, reused: true });
+      }
+
       const status = await checkMeshyTaskStatus(task_id, MESHY_API_KEY);
-      
+
       if (status.status !== "SUCCEEDED" || !status.model_urls?.glb) {
         throw new Error("Task not completed or GLB not available");
       }
@@ -190,6 +226,7 @@ serve(async (req) => {
         .from("case_3d_scans")
         .insert({
           case_id,
+          meshy_task_id: task_id,
           file_name: `meshy-model-${Date.now()}.glb`,
           file_url: publicUrl,
           storage_path: storagePath,
@@ -201,6 +238,18 @@ serve(async (req) => {
         .single();
 
       if (insertError) {
+        // C-2: duas finalizações simultâneas passam as duas pela consulta acima — é o
+        // índice único que decide. Quem perder a corrida encontra a linha da outra e
+        // devolve ela, em vez de estourar um erro que o usuário não pode resolver.
+        if (insertError.code === UNIQUE_VIOLATION) {
+          const winner = await findScanByTask(supabase, task_id);
+          if (winner) {
+            console.log("Perdeu a corrida de finalização; devolvendo:", winner.id);
+            // O upload desta chamada virou órfão: a linha aponta para o do vencedor.
+            await supabase.storage.from("case-3d-models").remove([storagePath]);
+            return jsonResponse(req, { success: true, scan: winner, reused: true });
+          }
+        }
         console.error("Database insert error:", insertError);
         throw new Error(`Failed to save scan record: ${insertError.message}`);
       }
