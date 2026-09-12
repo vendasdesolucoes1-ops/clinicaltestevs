@@ -74,6 +74,7 @@ import {
 } from '@/lib/facialSkeleton';
 import { SymmetryIndicator } from './SymmetryIndicator';
 import { AnalysisHistory } from './AnalysisHistory';
+import { DepthAccuracyPanel, type DepthAccuracyPhoto } from './DepthAccuracyPanel';
 import { Generate3DButton } from './Generate3DButton';
 import { AnatomicalMeasurementsPanel } from './AnatomicalMeasurements';
 import { 
@@ -167,6 +168,8 @@ interface ToolPanelProps {
   /** Quanto de um avanço a foto aberta mostra: 0 de frente, 1 de perfil. */
   boneAdvanceVisibility?: number;
   onBoneAdvance?: (advance: number) => void;
+  /** Fotos do caso, para conferir a profundidade estimada contra o perfil. */
+  casePhotos?: DepthAccuracyPhoto[];
   
   // Active points counter
   activePointsCount?: number;
@@ -329,6 +332,7 @@ export function ToolPanel({
   onBoneDrapeChange,
   boneAdvanceVisibility = 0,
   onBoneAdvance,
+  casePhotos,
   isMeshAILoading,
   activePointsCount,
   // 3D Model generation (Meshy AI)
@@ -749,6 +753,19 @@ export function ToolPanel({
             </AccordionContent>
           </AccordionItem>
 
+          {/* Confere a profundidade estimada contra o perfil do próprio caso */}
+          <AccordionItem value="depth" className="border-b border-border">
+            <AccordionTrigger className="px-3 py-2.5 text-xs">
+              <span className="flex items-center gap-2">
+                <Ruler className="h-3.5 w-3.5 text-muted-foreground" />
+                Conferir Profundidade
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-3 pb-3">
+              <DepthAccuracyPanel photos={casePhotos} />
+            </AccordionContent>
+          </AccordionItem>
+
           {/* Modelo 3D (Meshy AI) */}
           <AccordionItem value="model3d" className="border-b border-border">
             <AccordionTrigger className="px-3 py-2.5 text-xs">
@@ -923,28 +940,9 @@ export function ToolPanel({
                 {/* Etapa 1 da ferramenta óssea: bloco deslocado, pele drapejando por cima */}
                 {activeTool === 'bone_sculpt' && (
                   <div className="space-y-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full h-8 gap-1.5"
-                      onClick={onResetWarp}
-                      disabled={!hasWarp}
-                    >
-                      <Undo2 className="h-3.5 w-3.5" />
-                      <span className="text-xs">
-                        {hasWarp ? `Voltar ao original (${warpPointCount} pontos)` : 'Sem deformação'}
-                      </span>
-                    </Button>
-
-                    <div className="flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/20">
-                      <Activity className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
-                      <p className="text-[10px] text-muted-foreground leading-relaxed">
-                        Deformação <strong className="text-foreground">geométrica</strong>: mostra como a
-                        superfície ficaria se o suporte ósseo se deslocasse assim. Não há osteotomia,
-                        fixação nem resposta do tecido ao longo do tempo — não prediz o resultado.
-                      </p>
-                    </div>
-
+                    {/* Primeiro item do painel. Enterrada abaixo do aviso, a escolha de região
+                        caía fora da tela — e sem ela a ferramenta só alcança a região padrão.
+                        Mesma armadilha já anotada no painel de puxar pele. */}
                     <div className="space-y-2">
                       <Label className="text-xs">Região</Label>
                       <div className="grid grid-cols-2 gap-1.5">
@@ -969,6 +967,28 @@ export function ToolPanel({
                       <p className="text-[10px] text-muted-foreground leading-relaxed">
                         Arraste sobre o rosto para deslocar o bloco inteiro. A região anda rígida; só
                         o tecido ao redor dela sofre transição.
+                      </p>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 gap-1.5"
+                      onClick={onResetWarp}
+                      disabled={!hasWarp}
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      <span className="text-xs">
+                        {hasWarp ? `Voltar ao original (${warpPointCount} pontos)` : 'Sem deformação'}
+                      </span>
+                    </Button>
+
+                    <div className="flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/20">
+                      <Activity className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Deformação <strong className="text-foreground">geométrica</strong>: mostra como a
+                        superfície ficaria se o suporte ósseo se deslocasse assim. Não há osteotomia,
+                        fixação nem resposta do tecido ao longo do tempo — não prediz o resultado.
                       </p>
                     </div>
 
