@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 import { type MeshDensity, MESH_PRESETS } from '@/types/facialLandmarks';
+import { describeInvokeFailure } from '@/lib/invokeError';
 
 export interface MeshRecommendation {
   recommended: MeshDensity;
@@ -60,7 +61,8 @@ export function useMeshRecommendation(): UseMeshRecommendationReturn {
       });
 
       if (fnError) {
-        throw new Error(fnError.message);
+        const failure = await describeInvokeFailure(fnError, 'Erro ao recomendar densidade');
+        throw new Error(failure.message);
       }
 
       if (data.error) {

@@ -41,6 +41,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { resolveSignedUrls } from '@/lib/storageUrls';
+import { CASE_TYPE_LABELS, CASE_TYPE_OPTIONS } from '@/lib/caseTypes';
 
 type PhotoAngle = Database['public']['Enums']['photo_angle'];
 type CaseType = Database['public']['Enums']['case_type'];
@@ -62,7 +63,7 @@ export default function CaseForm() {
 
   const [formData, setFormData] = useState({
     codename: '',
-    type: 'trauma' as CaseType,
+    type: 'estetica' as CaseType,
     notes: '',
     tags: [] as string[],
     consentRegistered: false,
@@ -404,7 +405,7 @@ export default function CaseForm() {
                 <Label htmlFor="type">Tipo de Caso *</Label>
                 <Select 
                   value={formData.type} 
-                  onValueChange={(value: 'queimadura' | 'trauma') => 
+                  onValueChange={(value: CaseType) =>
                     setFormData(prev => ({ ...prev, type: value }))
                   }
                 >
@@ -412,8 +413,11 @@ export default function CaseForm() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="trauma">Trauma</SelectItem>
-                    <SelectItem value="queimadura">Queimadura</SelectItem>
+                    {CASE_TYPE_OPTIONS.map(option => (
+                      <SelectItem key={option} value={option}>
+                        {CASE_TYPE_LABELS[option]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

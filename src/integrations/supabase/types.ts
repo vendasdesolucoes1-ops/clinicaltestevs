@@ -648,7 +648,7 @@ export type Database = {
     Enums: {
       app_role: "cirurgiao" | "residente" | "admin"
       case_status: "ativo" | "arquivado" | "em_processamento"
-      case_type: "queimadura" | "trauma"
+      case_type: "estetica" | "queimadura" | "trauma"
       export_format: "png" | "jpg" | "pdf"
       job_status:
         | "pending"
@@ -790,7 +790,7 @@ export const Constants = {
     Enums: {
       app_role: ["cirurgiao", "residente", "admin"],
       case_status: ["ativo", "arquivado", "em_processamento"],
-      case_type: ["queimadura", "trauma"],
+      case_type: ["estetica", "queimadura", "trauma"],
       export_format: ["png", "jpg", "pdf"],
       job_status: [
         "pending",

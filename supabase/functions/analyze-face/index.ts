@@ -1,9 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { jsonResponse, preflight } from "../_shared/cors.ts";
+import { resolveCaller } from "../_shared/auth.ts";
+import { consumeQuota } from "../_shared/quota.ts";
 
 const FACIAL_ANALYSIS_PROMPT = `You are a facial anatomy expert for reconstructive surgery planning. Analyze the face in this image and detect anatomical landmarks.
 
@@ -120,25 +118,40 @@ Generate the complete JSON with ALL the landmark points now.`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return preflight(req);
   }
 
   try {
+    // S-2: esta chamada custa dinheiro por imagem. Exigir usuário autenticado tira o
+    // visitante anônimo, que até aqui podia disparar o modelo com a chave do bundle.
+    const caller = await resolveCaller(req);
+    if (!caller) {
+      return jsonResponse(req, { error: 'Autenticação obrigatória' }, 401);
+    }
+
     const { imageBase64 } = await req.json();
-    
+
     if (!imageBase64) {
-      return new Response(
-        JSON.stringify({ error: 'imageBase64 é obrigatório' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { error: 'imageBase64 é obrigatório' }, 400);
     }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
       console.error('LOVABLE_API_KEY não configurada');
-      return new Response(
-        JSON.stringify({ error: 'Configuração de API incompleta' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      return jsonResponse(req, { error: 'Configuração de API incompleta' }, 500);
+    }
+
+    // A cota é consumida DEPOIS de validar o pedido e o ambiente, e ANTES de acionar o
+    // modelo. Antes da validação, um cliente com bug gastaria a cota do usuário em
+    // requisições que nunca chegariam a custar nada; depois da chamada, quem estivesse
+    // martelando com retry após falha do fornecedor nunca atingiria o teto.
+    const denial = await consumeQuota(caller, 'analyze-face');
+    if (denial) {
+      return jsonResponse(
+        req,
+        { code: 'quota_exceeded', error: denial.message },
+        429,
+        { 'Retry-After': String(denial.retryAfterSeconds) },
       );
     }
 
@@ -180,22 +193,21 @@ serve(async (req) => {
       console.error('Erro da API Lovable:', response.status, errorText);
       
       if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'Limite de requisições excedido. Tente novamente em alguns segundos.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        return jsonResponse(
+          req,
+          { error: 'Limite de requisições excedido. Tente novamente em alguns segundos.' },
+          429,
         );
       }
       if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'Créditos insuficientes. Adicione créditos ao workspace.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        return jsonResponse(
+          req,
+          { error: 'Créditos insuficientes. Adicione créditos ao workspace.' },
+          402,
         );
       }
       
-      return new Response(
-        JSON.stringify({ error: 'Erro ao processar análise facial' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { error: 'Erro ao processar análise facial' }, 500);
     }
 
     const data = await response.json();
@@ -203,10 +215,7 @@ serve(async (req) => {
     
     if (!content) {
       console.error('Resposta vazia da IA');
-      return new Response(
-        JSON.stringify({ error: 'Resposta inválida da IA' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { error: 'Resposta inválida da IA' }, 500);
     }
 
     console.log('Resposta da IA recebida, tamanho:', content.length, 'caracteres');
@@ -225,10 +234,7 @@ serve(async (req) => {
     } catch (parseError) {
       console.error('Erro ao parsear JSON:', parseError);
       console.error('Conteúdo recebido:', content.substring(0, 1000));
-      return new Response(
-        JSON.stringify({ error: 'Formato de resposta inválido da IA' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { error: 'Formato de resposta inválido da IA' }, 500);
     }
 
     // Validar e filtrar pontos dentro da ROI
@@ -282,28 +288,23 @@ serve(async (req) => {
       console.warn('AVISO: Poucos pontos detectados! A IA pode não ter retornado todos os landmarks.');
     }
     
-    return new Response(
-      JSON.stringify({
-        faceROI,
-        midlinePoints,
-        points: scoredPoints,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(req, { faceROI, midlinePoints, points: scoredPoints });
 
   } catch (error: unknown) {
     console.error('Erro na função analyze-face:', error);
     
     if (error instanceof Error && error.name === 'AbortError') {
-      return new Response(
-        JSON.stringify({ error: 'Timeout na análise. A imagem pode ser muito complexa.' }),
-        { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      return jsonResponse(
+        req,
+        { error: 'Timeout na análise. A imagem pode ser muito complexa.' },
+        504,
       );
     }
     
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Erro desconhecido' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    return jsonResponse(
+      req,
+      { error: error instanceof Error ? error.message : 'Erro desconhecido' },
+      500,
     );
   }
 });
