@@ -44,6 +44,7 @@ import {
 import { type ClinicalCase, type CaseVersion } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { CASE_TYPE_BADGE_CLASSES, CASE_TYPE_LABELS } from '@/lib/caseTypes';
 
 interface VersionPanelProps {
   caseData: ClinicalCase;
@@ -166,16 +167,11 @@ export function VersionPanel({
       <div className="p-3 border-b border-border">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <Badge 
-              variant="outline" 
-              className={cn(
-                "text-xs",
-                caseData.type === 'queimadura' 
-                  ? 'border-warning/30 text-warning bg-warning/10' 
-                  : 'border-primary/30 text-primary bg-primary/10'
-              )}
+            <Badge
+              variant="outline"
+              className={cn('text-xs', CASE_TYPE_BADGE_CLASSES[caseData.type])}
             >
-              {caseData.type === 'queimadura' ? 'Queimadura' : 'Trauma'}
+              {CASE_TYPE_LABELS[caseData.type]}
             </Badge>
             <Badge variant="outline" className="text-xs border-border">
               {caseData.photos.length} fotos

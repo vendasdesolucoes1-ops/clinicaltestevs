@@ -12,6 +12,7 @@ import {
   AnatomicalRegion
 } from '@/types/facialLandmarks';
 import { toast } from 'sonner';
+import { describeInvokeFailure } from '@/lib/invokeError';
 
 export type MeshEditMode = 'move' | 'add' | 'remove' | 'connect';
 
@@ -96,7 +97,13 @@ export const useFacialAnalysis = (): UseFacialAnalysisReturn => {
 
       if (error) {
         console.error('Erro ao chamar edge function:', error);
-        toast.error('Erro ao analisar imagem facial');
+        // A cota e a exigência de login respondem com motivo; sem abrir o corpo da
+        // resposta o usuário veria só "erro" e não saberia que basta esperar.
+        const failure = await describeInvokeFailure(error, 'Erro ao analisar imagem facial');
+        toast.error(
+          failure.code === 'quota_exceeded' ? 'Limite de análises atingido' : 'Erro ao analisar imagem facial',
+          { description: failure.message },
+        );
         return null;
       }
 

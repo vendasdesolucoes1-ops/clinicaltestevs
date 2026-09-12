@@ -1,10 +1,8 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { jsonResponse, preflight } from "../_shared/cors.ts";
+import { resolveCaller } from "../_shared/auth.ts";
+import { consumeQuota } from "../_shared/quota.ts";
 
 interface MeshRecommendation {
   recommended: 'simetria' | 'clinico' | 'avancado' | 'completo';
@@ -24,11 +22,33 @@ const PRESET_POINTS = {
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return preflight(req);
   }
 
   try {
+    // S-2: chamada paga por imagem. Mesma proteção da analyze-face.
+    const caller = await resolveCaller(req);
+    if (!caller) {
+      return jsonResponse(req, { error: 'Autenticação obrigatória' }, 401);
+    }
+
     const { imageBase64, imageUrl, caseType, photoAngle, notes } = await req.json();
+
+    if (!imageBase64 && !imageUrl) {
+      return jsonResponse(req, { error: 'Either imageBase64 or imageUrl is required' }, 400);
+    }
+
+    // Mesma ordem da analyze-face: validar o pedido, depois consumir a cota, depois
+    // acionar o modelo.
+    const denial = await consumeQuota(caller, 'recommend-mesh-density');
+    if (denial) {
+      return jsonResponse(
+        req,
+        { code: 'quota_exceeded', error: denial.message },
+        429,
+        { 'Retry-After': String(denial.retryAfterSeconds) },
+      );
+    }
     
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     if (!lovableApiKey) {
@@ -194,28 +214,20 @@ Forneça sua recomendação no formato JSON especificado.`;
 
     console.log('Final recommendation:', validRecommendation);
 
-    return new Response(JSON.stringify(validRecommendation), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse(req, validRecommendation);
 
   } catch (error) {
     console.error('Error in recommend-mesh-density:', error);
-    return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Unknown error',
-        // Provide fallback recommendation on error
-        fallback: {
-          recommended: 'clinico',
-          recommendedPoints: 120,
-          confidence: 0.5,
-          reasoning: 'Erro na análise automática. Usando configuração padrão clínica.',
-          focusAreas: []
-        }
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    return jsonResponse(req, {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      // Provide fallback recommendation on error
+      fallback: {
+        recommended: 'clinico',
+        recommendedPoints: 120,
+        confidence: 0.5,
+        reasoning: 'Erro na análise automática. Usando configuração padrão clínica.',
+        focusAreas: []
       }
-    );
+    });
   }
 });

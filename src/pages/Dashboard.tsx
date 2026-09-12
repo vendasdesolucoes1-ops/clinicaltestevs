@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { CASE_TYPE_BADGE_CLASSES, CASE_TYPE_LABELS, type CaseType } from '@/lib/caseTypes';
 
 interface DashboardStats {
   activeCases: number;
@@ -23,7 +24,7 @@ interface DashboardStats {
   recentCases: {
     id: string;
     codename: string;
-    type: 'queimadura' | 'trauma';
+    type: CaseType;
     responsible: string;
     versionsCount: number;
   }[];
@@ -83,18 +84,10 @@ function StatCard({
   );
 }
 
-function CaseTypeTag({ type }: { type: 'queimadura' | 'trauma' }) {
+function CaseTypeTag({ type }: { type: CaseType }) {
   return (
-    <Badge 
-      variant="outline" 
-      className={cn(
-        "text-xs font-medium",
-        type === 'queimadura' 
-          ? 'border-warning/30 text-warning bg-warning/10' 
-          : 'border-primary/30 text-primary bg-primary/10'
-      )}
-    >
-      {type === 'queimadura' ? 'Queimadura' : 'Trauma'}
+    <Badge variant="outline" className={cn('text-xs font-medium', CASE_TYPE_BADGE_CLASSES[type])}>
+      {CASE_TYPE_LABELS[type]}
     </Badge>
   );
 }
@@ -204,7 +197,7 @@ export default function Dashboard() {
           return {
             id: c.id,
             codename: c.codename,
-            type: c.type as 'queimadura' | 'trauma',
+            type: c.type as CaseType,
             responsible: fullName || 'Não atribuído',
             versionsCount: versionCounts[c.id] || 0
           };

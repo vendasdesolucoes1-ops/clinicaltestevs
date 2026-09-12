@@ -55,6 +55,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import { CASE_TYPE_BADGE_CLASSES, CASE_TYPE_LABELS } from '@/lib/caseTypes';
 
 type CaseStatus = Database['public']['Enums']['case_status'];
 type CaseType = Database['public']['Enums']['case_type'];
@@ -88,16 +89,8 @@ function StatusBadge({ status }: { status: CaseStatus }) {
 
 function TypeBadge({ type }: { type: CaseType }) {
   return (
-    <Badge 
-      variant="outline" 
-      className={cn(
-        'text-xs font-medium',
-        type === 'queimadura' 
-          ? 'border-warning/30 text-warning bg-warning/10' 
-          : 'border-primary/30 text-primary bg-primary/10'
-      )}
-    >
-      {type === 'queimadura' ? 'Queimadura' : 'Trauma'}
+    <Badge variant="outline" className={cn('text-xs font-medium', CASE_TYPE_BADGE_CLASSES[type])}>
+      {CASE_TYPE_LABELS[type]}
     </Badge>
   );
 }

@@ -1,10 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { jsonResponse, preflight } from "../_shared/cors.ts";
+import { canAccessCase, resolveCaller } from "../_shared/auth.ts";
 
 const MESHY_API_URL = "https://api.meshy.ai";
 
@@ -118,10 +115,17 @@ async function downloadAndUploadModel(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return preflight(req);
   }
 
   try {
+    // S-1: quem está chamando? Sem isso, a chave de serviço logo abaixo torna o RLS
+    // do banco irrelevante para esta rota.
+    const caller = await resolveCaller(req);
+    if (!caller) {
+      return jsonResponse(req, { error: "Autenticação obrigatória" }, 401);
+    }
+
     const MESHY_API_KEY = Deno.env.get("MESHY_API_KEY");
     if (!MESHY_API_KEY) {
       throw new Error("MESHY_API_KEY is not configured");
@@ -140,23 +144,34 @@ serve(async (req) => {
 
     // Action: check status of existing task
     if (action === "status" && task_id) {
+      // S-1: a resposta da Meshy traz as URLs do modelo pronto. Sem amarrar a consulta a
+      // um caso do próprio chamador, qualquer autenticado que descobrisse um task_id
+      // receberia o modelo 3D de outro paciente.
+      if (!case_id || !(await canAccessCase(caller, case_id))) {
+        return jsonResponse(req, { error: "Sem acesso a este caso" }, 403);
+      }
+
       console.log("Checking status for task:", task_id);
       const status = await checkMeshyTaskStatus(task_id, MESHY_API_KEY);
       
-      return new Response(JSON.stringify({
+      return jsonResponse(req, {
         task_id,
         status: status.status,
         progress: status.progress,
         model_urls: status.model_urls,
         thumbnail_url: status.thumbnail_url,
         error: status.task_error?.message,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // Action: finalize - download and save model
     if (action === "finalize" && task_id && case_id) {
+      // S-1: o caso vem do corpo da requisição. Perguntar ao banco COM O TOKEN DO
+      // CHAMADOR é o que impede gravar o modelo 3D no caso de outra pessoa.
+      if (!(await canAccessCase(caller, case_id))) {
+        return jsonResponse(req, { error: "Sem acesso a este caso" }, 403);
+      }
+
       console.log("Finalizing task:", task_id);
       const status = await checkMeshyTaskStatus(task_id, MESHY_API_KEY);
       
@@ -192,12 +207,7 @@ serve(async (req) => {
 
       console.log("3D model saved successfully:", scanRecord.id);
 
-      return new Response(JSON.stringify({
-        success: true,
-        scan: scanRecord,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(req, { success: true, scan: scanRecord });
     }
 
     // Action: create new task (default)
@@ -205,23 +215,25 @@ serve(async (req) => {
       throw new Error("Missing required fields: image_url and case_id");
     }
 
+    // S-1: gerar modelo custa crédito da Meshy e é sempre em nome de um caso.
+    if (!(await canAccessCase(caller, case_id))) {
+      return jsonResponse(req, { error: "Sem acesso a este caso" }, 403);
+    }
+
     const taskId = await createMeshyTask(image_url, MESHY_API_KEY);
 
-    return new Response(JSON.stringify({
+    return jsonResponse(req, {
       success: true,
       task_id: taskId,
       message: "3D model generation started. Use action='status' to check progress.",
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (error) {
     console.error("Error in generate-3d-model:", error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Unknown error",
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(
+      req,
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      500,
+    );
   }
 });

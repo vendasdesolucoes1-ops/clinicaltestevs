@@ -107,7 +107,9 @@ export function useMeshy3D(onSuccess?: (scan: MeshyScanResult) => void) {
 
       try {
         const { data, error } = await supabase.functions.invoke('generate-3d-model', {
-          body: { action: 'status', task_id: taskId },
+          // O caso vai junto: a função confere o acesso antes de devolver as URLs do
+          // modelo, e sem ele a consulta é recusada.
+          body: { action: 'status', task_id: taskId, case_id: caseId },
         });
 
         if (error) throw error;
